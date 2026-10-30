@@ -32,6 +32,35 @@
     transition: width var(--fold); }
   .card.collapsed { width: 440px; }
 
+  #stage [hidden] { display: none !important; }
+
+  /* Eingeklappte Karte: Akzentbalken an der ausgerichteten Seite, daneben die reduzierten Orders.
+     Der dunkle Hintergrund beginnt am Balken und blendet ins Bild aus. */
+  .rail { display: flex; align-items: stretch; }
+  .rail.v-l { flex-direction: row; }        .rail.v-r { flex-direction: row-reverse; }
+  .rail.h-t { flex-direction: column; }     .rail.h-b { flex-direction: column-reverse; }
+  .rail-bar { background: var(--accent); flex: 0 0 7px; border-radius: 1px; }
+  .rail-items { display: flex; gap: 14px; text-shadow: 0 1px 2px #000, 0 0 8px rgba(0,0,0,.85); }
+  .rail.v-l .rail-items, .rail.v-r .rail-items { flex-direction: column; padding: 14px 80px 14px 16px; }
+  .rail.v-r .rail-items { padding: 14px 16px 14px 80px; align-items: flex-end; text-align: right; }
+  .rail.h-t .rail-items, .rail.h-b .rail-items { flex-direction: row; gap: 0; padding: 12px 6px 44px; }
+  .rail.h-b .rail-items { padding: 44px 6px 12px; }
+  .rail.v-l .rail-items { background: linear-gradient(90deg, rgba(8,10,12,var(--bg-a)) 0, rgba(8,10,12,calc(var(--bg-a) * .6)) 50%, transparent 100%); }
+  .rail.v-r .rail-items { background: linear-gradient(270deg, rgba(8,10,12,var(--bg-a)) 0, rgba(8,10,12,calc(var(--bg-a) * .6)) 50%, transparent 100%); }
+  .rail.h-t .rail-items { background: linear-gradient(180deg, rgba(8,10,12,var(--bg-a)) 0, rgba(8,10,12,calc(var(--bg-a) * .6)) 50%, transparent 100%); }
+  .rail.h-b .rail-items { background: linear-gradient(0deg, rgba(8,10,12,var(--bg-a)) 0, rgba(8,10,12,calc(var(--bg-a) * .6)) 50%, transparent 100%); }
+  .rail.h-t .ritem, .rail.h-b .ritem { padding: 0 22px; }
+  .rail.h-t .ritem + .ritem, .rail.h-b .ritem + .ritem { border-left: 1px solid rgba(255,255,255,.25); }
+  .rail.h-t.al-r .rail-items, .rail.h-b.al-r .rail-items { text-align: right; }
+  .rail.h-t.al-c .rail-items, .rail.h-b.al-c .rail-items { text-align: center; }
+  .ritem-title { font: 700 16px/1.2 "Chakra Petch", sans-serif; letter-spacing: .05em; text-transform: uppercase; color: #fff; white-space: nowrap; }
+  .ritem-row { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
+  .rail.v-r .ritem-row, .rail.al-r .ritem-row { flex-direction: row-reverse; }
+  .rail.h-t.al-c .ritem-row, .rail.h-b.al-c .ritem-row { justify-content: center; }
+  .ritem-val { font: 700 30px/1.05 "Chakra Petch", sans-serif; color: var(--accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ritem-time { font: 700 14px/1.2 "Chakra Petch", sans-serif; color: #d6dbe0; white-space: nowrap; }
+  .ritem-label { font-size: 12.5px; font-weight: 600; color: #d6dbe0; letter-spacing: .06em; text-transform: uppercase; margin-top: 1px; }
+
   .head { display: flex; align-items: center; gap: 12px; padding: 9px 12px 9px 16px;
     background: var(--accent); color: var(--on-accent); }
   .badge { font: 700 19px/1.1 "Chakra Petch", sans-serif; letter-spacing: .1em; text-transform: uppercase;
@@ -174,6 +203,10 @@
     text-shadow: 0 0 20px color-mix(in srgb, var(--accent) 55%, transparent), 0 2px 4px rgba(0,0,0,.7); }
   body.layout-counter .mini-label { color: #e4e8ec; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
   body.layout-counter .minibody .bar { display: none; }
+  /* Eingeklappt soll der Zähler nur so breit sein wie die Hauptzahlen: die ausgeblendete volle Ansicht
+     gibt ihre Breite erst nach der Klapp-Animation (0,7 s) frei, beim Aufklappen sofort zurück. */
+  body.layout-counter .fold.full { max-width: 3000px; transition: grid-template-rows var(--fold), opacity .45s ease, max-width 0s; }
+  body.layout-counter .card.collapsed .fold.full { max-width: 0; transition: grid-template-rows var(--fold), opacity .45s ease, max-width 0s linear .7s; }
 
   /* ---------------- Ausrichtung nach Position ----------------
      align-l / align-r: Inhalt zum nahen Bildrand hin ausgerichtet, eingeklappt schrumpft alles zu
@@ -254,6 +287,13 @@
   .filebox { border: 1px solid #2b3137; border-radius: 6px; padding: 10px 12px; margin: 4px 0 12px; }
   .filebtns { display: flex; gap: 8px; flex-wrap: wrap; }
   #f-status.ok { color: #4fd18b; } #f-status.bad { color: #ff9e94; } #f-status.warn { color: var(--accent); }
+  .posgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 132px; padding: 5px;
+    background: #0f1214; border: 1px solid #2b3137; border-radius: 4px; aspect-ratio: 16 / 10; }
+  .posgrid button { background: transparent; border: 1px dashed #2b3137; border-radius: 2px; padding: 0; display: grid; place-items: center; }
+  .posgrid button i { width: 12px; height: 8px; border-radius: 1px; background: #4a525a; }
+  .posgrid button:hover i { background: var(--fg); }
+  .posgrid button[aria-checked="true"] { border: 1px solid var(--accent); }
+  .posgrid button[aria-checked="true"] i { background: var(--accent); }
   .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .presets button { background: #0f1214; color: var(--fg); border: 1px solid #2b3137; text-align: left; padding: 8px 10px; }
   .presets button.on { border-color: var(--accent); color: var(--accent); }
@@ -280,7 +320,7 @@
 const P = new URLSearchParams(location.search);
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 const layout = ["bar", "counter"].includes(P.get("layout")) ? P.get("layout") : "card";
-const POS = ["tl", "tc", "tr", "bl", "bc", "br"];
+const POS = ["tl", "tc", "tr", "ml", "mc", "mr", "bl", "bc", "br"]; // oben/Mitte/unten × links/Mitte/rechts
 const CFG = {
   sources: (P.get("sources") || "").split(",").map(s => s.trim()).filter(Boolean),
   // Optional: Orders aus einer Datei (z. B. orders.json neben dem Overlay auf GitHub Pages).
@@ -292,6 +332,9 @@ const CFG = {
   layout,
   pos: POS.includes(P.get("pos")) ? P.get("pos") : (layout === "bar" ? "bc" : "tl"),
   margin: clamp(Number(P.get("margin")) || 40, 0, 400),
+  // Abstand zum Rand getrennt: seitlich (mx) und oben/unten (my); ohne Angabe gilt margin
+  mx: clamp(P.has("mx") ? Number(P.get("mx")) : (Number(P.get("margin")) || 40), 0, 800),
+  my: clamp(P.has("my") ? Number(P.get("my")) : (Number(P.get("margin")) || 40), 0, 800),
   demo: P.get("demo") === "1",
   scale: clamp(Number(P.get("scale")) || 1, 0.4, 3),
   accent: /^[0-9a-f]{6}$/i.test(P.get("accent") || "") ? "#" + P.get("accent") : (layout === "counter" ? "#ffc233" : "#ffe711"),
@@ -578,6 +621,10 @@ function fresh(v) {
 /* ------------------------------ Rendern ------------------------------ */
 let el = {}, current = null, shownKey = "", headEnds = null, headApprox = false, headStatus = null;
 
+// Richtung der Einklapp-Leiste: Mitte links/rechts senkrecht (Orders untereinander),
+// sonst waagerecht am oberen bzw. unteren Rand (Orders nebeneinander)
+const RAIL = CFG.pos[0] === "m" && CFG.pos[1] !== "c" ? (CFG.pos[1] === "l" ? "v-l" : "v-r") : (CFG.pos[0] === "b" ? "h-b" : "h-t");
+
 function buildCard() {
   document.getElementById("stage").innerHTML = `
     <div class="card" id="card">
@@ -588,8 +635,10 @@ function buildCard() {
         <div class="fold mini"><div><div class="minibody" id="mini"></div></div></div>
       </div>
       <div class="dots" id="dots"></div>
-    </div>`;
-  ["card", "badge", "timer", "full", "mini", "dots"].forEach(id => el[id] = document.getElementById(id));
+    </div>
+    <div class="rail ${RAIL} al-${CFG.pos[1]}" id="rail" hidden><div class="rail-bar"></div><div class="rail-items" id="rail-items"></div></div>`;
+  ["card", "badge", "timer", "full", "mini", "dots", "rail"].forEach(id => el[id] = document.getElementById(id));
+  if (layout === "card") el.mini = document.getElementById("rail-items"); // Karte: reduzierte Orders in der Rail
   if (layout === "bar") el.card.appendChild(el.dots); // Punkte bleiben in der Leiste unsichtbar
 }
 
@@ -724,7 +773,21 @@ function countUp(node, fromTxt, toTxt) {
   requestAnimationFrame(step);
 }
 
+function railHTML(all) {
+  return all.map(sl => {
+    const o = sl.o, kb = `${sl.src}|${sl.idx}`, h = headline(o);
+    const time = o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : "");
+    const isPct = /%$/.test(String(h.value).trim());
+    return `<div class="ritem">
+      <div class="ritem-title">${esc(o.title)}</div>
+      <div class="ritem-row"><span class="ritem-val" data-vk="${kb}|mini">${esc(h.value)}</span>${time ? `<span class="ritem-time mrow-time" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</span>` : ""}</div>
+      ${!isPct && h.label ? `<div class="ritem-label">${esc(h.label)}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
 function renderMiniAll() {
+  if (layout === "card") { el.mini.innerHTML = railHTML(slides()); growFills(el.mini); return; }
   const all = slides(), multi = all.length > 1;
   if (multi) { el.badge.textContent = T.orders; headEnds = null; headStatus = null; tickTimer(); }
   else if (all[0]) setHead(all[0].o);
@@ -805,10 +868,38 @@ function patchCurrent() {
   growFills(el.full);
 }
 
+// Karte zur ausgerichteten Seite zusammenfalten, dann wächst der Akzentbalken und die Orders gleiten heraus
+async function foldCard(collapse) {
+  const vert = RAIL[0] === "v";
+  const hx = CFG.pos[1] === "l" ? "left" : CFG.pos[1] === "r" ? "right" : "center";
+  const origin = vert ? `${RAIL === "v-l" ? "left" : "right"} center` : `${hx} ${RAIL === "h-b" ? "bottom" : "top"}`;
+  const squash = vert ? "scaleX(0)" : "scaleY(0)";
+  const bar = el.rail.querySelector(".rail-bar");
+  const barOrigin = vert ? "center center" : `${hx} center`;
+  const slide = vert ? `translateX(${RAIL === "v-l" ? -18 : 18}px)` : `translateY(${RAIL === "h-b" ? 18 : -18}px)`;
+  const ease = "cubic-bezier(.4,0,.2,1)";
+  if (collapse) {
+    el.card.style.transformOrigin = origin;
+    await el.card.animate([{ transform: "none", opacity: 1 }, { transform: squash, opacity: 0 }], { duration: 450, easing: ease }).finished;
+    el.card.hidden = true; el.rail.hidden = false;
+    bar.style.transformOrigin = barOrigin;
+    bar.animate([{ transform: vert ? "scaleY(0)" : "scaleX(0)" }, { transform: "none" }], { duration: 320, easing: "ease-out" });
+    el.mini.animate([{ opacity: 0, transform: slide }, { opacity: 1, transform: "none" }], { duration: 420, delay: 160, easing: "ease-out", fill: "backwards" });
+  } else {
+    if (el.rail.hidden) return;
+    el.mini.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: slide }], { duration: 220, easing: ease, fill: "forwards" });
+    await bar.animate([{ transform: "none" }, { transform: vert ? "scaleY(0)" : "scaleX(0)" }], { duration: 260, delay: 120, easing: ease, fill: "forwards" }).finished;
+    el.rail.hidden = true; el.card.hidden = false;
+    el.mini.getAnimations().forEach(a => a.cancel()); bar.getAnimations().forEach(a => a.cancel());
+    el.card.style.transformOrigin = origin;
+    await el.card.animate([{ transform: squash, opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 450, easing: ease }).finished;
+  }
+}
+
 async function collapsedPhase() {
   current = { phase: "mini" };
   renderMiniAll();
-  el.card.classList.add("collapsed");
+  if (layout === "card") await foldCard(true); else el.card.classList.add("collapsed");
   await sleep(CFG.closed * 1000); // neue Daten kommen über refreshAll -> patchCurrent hinein
 }
 
@@ -826,9 +917,8 @@ async function runLoop() {
         growFills(el.full);
         shownKey = `${vs[0].src}|${vs[0].idx}|${vs[0].phase}`;
       }
-      el.card.classList.remove("collapsed");
-      el.card.style.removeProperty("--cw");
-      await sleep(250);
+      if (layout === "card") await foldCard(false);
+      else { el.card.classList.remove("collapsed"); el.card.style.removeProperty("--cw"); await sleep(250); }
       for (const v of vs) await showView(v);
       await collapsedPhase();
     } else {
@@ -838,15 +928,19 @@ async function runLoop() {
 }
 
 function placeStage() {
-  const st = document.getElementById("stage").style, m = CFG.margin + "px";
-  const v = CFG.pos[0] === "t" ? "top" : "bottom", h = CFG.pos[1];
-  st[v] = m;
-  if (h === "l") st.left = m; else if (h === "r") st.right = m;
-  else { // Mitte: volle Breite, Inhalt zentriert – so steht die ganze Leinwandbreite zur Verfügung
-    st.left = "0"; st.right = "0"; st.display = "flex"; st.justifyContent = "center";
-  }
+  // Die Bühne nimmt je nach Position die volle Breite/Höhe ein und richtet die Karte per Flexbox aus.
+  // So bleiben auch Mitte-Positionen beim Ein-/Ausklappen exakt mittig.
+  const st = document.getElementById("stage").style;
+  const v = CFG.pos[0], h = CFG.pos[1];
+  st.display = "flex";
+  if (v === "t") { st.top = CFG.my + "px"; st.alignItems = "flex-start"; }
+  else if (v === "b") { st.bottom = CFG.my + "px"; st.alignItems = "flex-end"; }
+  else { st.top = "0"; st.bottom = "0"; st.alignItems = "center"; }
+  if (h === "l") st.left = CFG.mx + "px";
+  else if (h === "r") st.right = CFG.mx + "px";
+  else { st.left = "0"; st.right = "0"; st.justifyContent = "center"; }
   st.transform = `scale(${CFG.scale})`;
-  st.transformOrigin = `${v} ${h === "l" ? "left" : h === "r" ? "right" : "center"}`;
+  st.transformOrigin = `${v === "t" ? "top" : v === "b" ? "bottom" : "center"} ${h === "l" ? "left" : h === "r" ? "right" : "center"}`;
 }
 
 function startOverlay() {
@@ -933,13 +1027,17 @@ function startSetup() {
           <div class="field"><label>Layout</label>
             <select id="c-layout"><option value="card">Karte</option><option value="bar">Leiste</option><option value="counter">Event-Zähler</option></select></div>
           <div class="field"><label>Position</label>
-            <select id="c-pos">
-              <option value="tl">Oben links</option><option value="tc">Oben Mitte</option><option value="tr">Oben rechts</option>
-              <option value="bl">Unten links</option><option value="bc">Unten Mitte</option><option value="br">Unten rechts</option>
-            </select></div>
+            <input type="hidden" id="c-pos" value="tl">
+            <div class="posgrid" id="posgrid" role="radiogroup" aria-label="Position">${POS.map(k => {
+              const n = { t: "Oben", m: "Mitte", b: "Unten" }[k[0]] + " " + { l: "links", c: "Mitte", r: "rechts" }[k[1]];
+              return `<button type="button" role="radio" data-pos="${k}" title="${n}" aria-label="${n}"><i></i></button>`;
+            }).join("")}</div></div>
         </div>
         <div class="field"><label>Größe <output id="o-scale"></output></label><input type="range" id="c-scale" min="60" max="180" step="5" value="100"></div>
-        <div class="field"><label>Abstand zum Rand <output id="o-margin"></output></label><input type="range" id="c-margin" min="0" max="200" step="5" value="40"></div>
+        <div class="two">
+          <div class="field"><label>Abstand seitlich <output id="o-mx"></output></label><input type="range" id="c-mx" min="0" max="400" step="5" value="40"></div>
+          <div class="field"><label>Abstand oben/unten <output id="o-my"></output></label><input type="range" id="c-my" min="0" max="400" step="5" value="40"></div>
+        </div>
         <div class="field"><label>Hintergrund-Deckkraft <output id="o-bgalpha"></output></label><input type="range" id="c-bgalpha" min="0" max="100" step="5" value="85"></div>
         <div class="field"><label>Akzentfarbe</label>
           <div class="colorrow"><input type="color" id="c-accent" value="#ffe711">
@@ -1007,6 +1105,7 @@ function startSetup() {
     markPreset(k); update();
   }
   document.querySelectorAll("#presets button").forEach(b => b.onclick = () => applyPreset(b.dataset.p));
+  document.querySelectorAll("#posgrid button").forEach(b => b.onclick = () => { $("c-pos").value = b.dataset.pos; update(true); });
   document.querySelectorAll(".swatches button").forEach(b => b.onclick = () => { $("c-accent").value = b.dataset.c; update(); });
 
   let timer;
@@ -1024,7 +1123,8 @@ function startSetup() {
     p.set("layout", $("c-layout").value);
     p.set("pos", $("c-pos").value);
     if (+$("c-scale").value !== 100) p.set("scale", (+$("c-scale").value / 100).toFixed(2));
-    if (+$("c-margin").value !== 40) p.set("margin", $("c-margin").value);
+    if (+$("c-mx").value !== 40) p.set("mx", $("c-mx").value);
+    if (+$("c-my").value !== 40) p.set("my", $("c-my").value);
     p.set("bgalpha", $("c-bgalpha").value);
     const acc = $("c-accent").value.replace("#", "").toLowerCase();
     if (acc !== ($("c-layout").value === "counter" ? "ffc233" : "ffe711")) p.set("accent", acc);
@@ -1039,7 +1139,9 @@ function startSetup() {
     if ($("c-contact").value.trim()) p.set("contact", $("c-contact").value.trim());
     if (!$("c-pulse").checked) p.set("pulse", "0");
     $("o-scale").textContent = $("c-scale").value + " %";
-    $("o-margin").textContent = $("c-margin").value + " px";
+    $("o-mx").textContent = $("c-pos").value[1] === "c" ? "– (Mitte)" : $("c-mx").value + " px";
+    $("o-my").textContent = $("c-pos").value[0] === "m" ? "– (Mitte)" : $("c-my").value + " px";
+    document.querySelectorAll("#posgrid button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.pos === $("c-pos").value)));
     $("o-bgalpha").textContent = $("c-bgalpha").value + " %";
     document.documentElement.style.setProperty("--accent", $("c-accent").value);
     document.documentElement.style.setProperty("--on-accent", onAccent($("c-accent").value));
