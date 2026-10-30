@@ -1,0 +1,1183 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HD2 Order Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Alle Größen sind für eine 1920×1080-Leinwand ausgelegt (Browserquelle in Leinwandgröße). */
+  :root {
+    --accent: #ffe711;
+    --on-accent: #111;
+    --bg-a: 0.85;
+    --bg: rgba(8, 10, 12, var(--bg-a));
+    --fg: #f4f4f4;
+    --muted: #b4bcc4;
+    --track: rgba(255, 255, 255, 0.16);
+    --ok: #4fd18b;
+    --fold: .7s cubic-bezier(.4, 0, .2, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; color: var(--fg);
+    font-family: "Inter", system-ui, sans-serif; }
+  /* Nur im Overlay-Modus kein Scrollen (keine Scrollbalken in OBS) */
+  html.overlay-mode, html.overlay-mode body { overflow: hidden; }
+  body.setup { background: #111417; }
+
+  /* ---------------- Overlay ---------------- */
+  #stage { position: fixed; }
+  .card { width: 540px; overflow: hidden; border-radius: 4px; box-shadow: 0 8px 28px rgba(0,0,0,calc(var(--bg-a) * .5));
+    transition: width var(--fold); }
+  .card.collapsed { width: 440px; }
+
+  .head { display: flex; align-items: center; gap: 12px; padding: 9px 12px 9px 16px;
+    background: var(--accent); color: var(--on-accent); }
+  .badge { font: 700 19px/1.1 "Chakra Petch", sans-serif; letter-spacing: .1em; text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .timer { margin-left: auto; background: var(--on-accent); color: var(--accent); white-space: nowrap;
+    font: 700 19px/1 "Chakra Petch", sans-serif; letter-spacing: .04em; padding: 6px 10px; border-radius: 2px; }
+  .timer:empty { display: none; }
+  .tape { height: 7px; background: repeating-linear-gradient(-45deg, var(--accent) 0 9px, #111 9px 18px); }
+
+  .stack { background: var(--bg); }
+  .fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--fold), opacity .45s ease; }
+  .fold > div { min-height: 0; overflow: hidden; }
+  .fold.mini { grid-template-rows: 0fr; opacity: 0; }
+  .collapsed .fold.full { grid-template-rows: 0fr; opacity: 0; }
+  .collapsed .fold.mini { grid-template-rows: 1fr; opacity: 1; }
+
+  .body { padding: 12px 16px 14px; transition: opacity .35s ease; }
+  .body.fade { opacity: 0; }
+  .title { font: 700 27px/1.12 "Chakra Petch", sans-serif; text-transform: uppercase; letter-spacing: .02em; }
+  .subtitle { color: var(--muted); font-size: 17px; line-height: 1.35; margin-top: 6px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .brief-label { display: inline-block; margin-top: 10px; font: 700 14px/1 "Chakra Petch", sans-serif;
+    letter-spacing: .14em; color: var(--accent); }
+  /* Briefing in der Karte: feste Maximalhöhe, längerer Text scrollt automatisch durch */
+  .brief-win { max-height: var(--briefh, 220px); overflow: hidden; margin-top: 6px; transform: translateZ(0);
+    mask-image: linear-gradient(#000 0, #000 82%, transparent); -webkit-mask-image: linear-gradient(#000 0, #000 82%, transparent); }
+  .brief-win.fits { mask-image: none; -webkit-mask-image: none; }
+  .brief { font-size: 19px; line-height: 1.45; white-space: pre-line; padding-bottom: 28px;
+    will-change: transform; transform: translate3d(0,0,0); backface-visibility: hidden; }
+  .brief-win.fits .brief { padding-bottom: 0; }
+  .rows { margin-top: 12px; display: grid; gap: 12px; }
+  .row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .row-label { font-weight: 600; font-size: 17px; line-height: 1.25; }
+  .row-value { font: 700 19px/1.2 "Chakra Petch", sans-serif; white-space: nowrap; }
+  .row.done .row-label::before { content: "✔ "; color: var(--ok); }
+  .bar { height: 10px; background: var(--track); margin-top: 5px; border-radius: 2px; overflow: hidden; }
+  .fill { height: 100%; background: var(--accent); width: 0; transition: width 1.4s ease; }
+  .row.done .fill { background: var(--ok); }
+  /* Dezentes Aufleuchten, wenn sich ein Wert ändert */
+  @keyframes tick { 0% { color: var(--accent); } 100% { color: inherit; } }
+  .changed { animation: tick 1.8s ease-out; }
+  .foot { margin-top: 12px; color: var(--muted); font-size: 15px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .foot b { color: var(--fg); font: 700 16px "Chakra Petch", sans-serif; }
+  .err { color: #ff9e94; font-size: 15px; margin-top: 8px; }
+  .dots { display: flex; gap: 5px; padding: 0 16px 12px; background: var(--bg); }
+  .dots i { width: 18px; height: 4px; background: var(--track); }
+  .dots i.on { background: var(--accent); }
+  .dots:empty { display: none; }
+  .collapsed .dots { display: none; }
+
+  .minibody { padding: 10px 16px 12px; }
+  .mini-title { font: 700 17px/1.2 "Chakra Petch", sans-serif; text-transform: uppercase; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-row { display: flex; align-items: baseline; gap: 12px; margin-top: 2px; }
+  .mini-value { font: 700 34px/1.1 "Chakra Petch", sans-serif; white-space: nowrap; }
+  .mini-label { font-size: 16px; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .minibody .bar { height: 6px; margin-top: 6px; }
+  /* Eingeklappt: alle Orders gleichzeitig */
+  .mrow + .mrow { border-top: 1px solid var(--track); margin-top: 9px; padding-top: 9px; }
+  .mrow-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .mrow-top .mini-title { min-width: 0; }
+  .mrow-time { font: 700 15px/1.2 "Chakra Petch", sans-serif; color: var(--accent); white-space: nowrap; }
+  .minibody.multi .mini-value { font-size: 27px; }
+
+  /* Lesbarkeit bei durchsichtigem Hintergrund */
+  body.thin .stack .title, body.thin .stack .row-label, body.thin .stack .row-value, body.thin .stack .subtitle,
+  body.thin .stack .brief, body.thin .stack .foot, body.thin .stack .mini-value, body.thin .stack .mini-label,
+  body.thin .stack .mini-title, body.thin .ticker-text {
+    text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,.9), 0 0 12px rgba(0,0,0,.6); }
+  body.thin .stack .subtitle, body.thin .stack .mini-title, body.thin .stack .foot { color: #e2e6ea; }
+
+  /* ---------------- Leiste ---------------- */
+  body.layout-bar .card { width: 1500px; display: flex; align-items: stretch; }
+  body.layout-bar .card.collapsed { width: var(--cw, 600px); }
+  body.layout-bar .head { flex-direction: column; justify-content: center; align-items: stretch; gap: 8px;
+    width: 210px; flex: 0 0 210px; padding: 10px 12px; }
+  body.layout-bar .badge { text-align: center; white-space: normal; }
+  body.layout-bar .timer { margin-left: 0; text-align: center; }
+  body.layout-bar .tape { height: auto; width: 8px; flex: 0 0 8px; }
+  body.layout-bar .stack { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+  body.layout-bar .fold { grid-area: 1 / 1; grid-template-rows: 1fr; overflow: hidden; }
+  body.layout-bar .fold.full .body { min-width: 1270px; }
+  body.layout-bar .collapsed .fold.full { grid-template-rows: 1fr; }
+  body.layout-bar .body { display: flex; align-items: center; gap: 24px; padding: 12px 18px; height: 100%; min-height: 112px; }
+  body.layout-bar .title { font-size: 24px; flex: 0 0 280px; }
+  body.layout-bar .subtitle, body.layout-bar .dots { display: none; }
+  body.layout-bar .rows { flex: 1; margin: 0; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 22px; }
+  body.layout-bar .foot { margin: 0; flex-direction: column; flex: 0 0 150px; }
+  body.layout-bar .minibody { height: 100%; display: flex; flex-direction: column; justify-content: center; }
+  body.layout-bar .minibody.multi { flex-direction: row; align-items: center; gap: 0; }
+  body.layout-bar .minibody.multi .mrow { flex: 1 1 0; min-width: 0; padding: 0 16px; }
+  body.layout-bar .minibody.multi .mrow:first-child { padding-left: 0; }
+  body.layout-bar .mrow + .mrow { border-top: 0; margin-top: 0; padding-top: 0; border-left: 1px solid var(--track); }
+  .ticker { flex: 1; display: flex; align-items: center; gap: 16px; min-width: 0; }
+  .ticker-label { font: 700 15px/1 "Chakra Petch", sans-serif; letter-spacing: .14em; color: var(--on-accent);
+    background: var(--accent); padding: 6px 8px; border-radius: 2px; }
+  .ticker-win { flex: 1; overflow: hidden; white-space: nowrap; min-width: 0;
+    mask-image: linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent); }
+  .ticker-text { display: inline-block; font-size: 24px; font-weight: 600; padding-right: 40px; will-change: transform; }
+
+  /* ---------------- Event-Zähler ----------------
+     Kein Kasten: zentrierte, leuchtende Zahlen frei auf dem Bild, Zahlenreihe mit Trennstrichen,
+     Status darunter. Hauptzahl in der Akzentfarbe, Zahlenreihe in der Zweitfarbe. */
+  :root { --accent2: #c9a6ff; }
+  body.layout-counter .card, body.layout-counter .card.collapsed { width: auto; min-width: 560px; max-width: 1700px;
+    box-shadow: none; border-radius: 0; }
+  body.layout-counter .head, body.layout-counter .tape, body.layout-counter .dots { display: none; }
+  body.layout-counter .stack { background: radial-gradient(ellipse 60% 70% at 50% 50%,
+    rgba(8,10,12,var(--bg-a)) 0, rgba(8,10,12,calc(var(--bg-a) * .55)) 60%, transparent 100%); }
+  body.layout-counter .body { text-align: center; padding: 20px 56px 22px; }
+  .c-badge { font: 700 15px/1.2 "Chakra Petch", sans-serif; letter-spacing: .22em; text-transform: uppercase; color: #dfe3e8; }
+  .c-hero { font: 700 76px/1 "Chakra Petch", sans-serif; color: var(--accent); margin-top: 6px; font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 24px color-mix(in srgb, var(--accent) 55%, transparent), 0 2px 4px rgba(0,0,0,.7); }
+  .c-hero-label, .c-lbl { font: 700 13px/1.25 "Inter", sans-serif; letter-spacing: .14em; text-transform: uppercase; color: #e4e8ec;
+    text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  .c-hero-label { font-size: 15px; margin-top: 4px; }
+  .c-title { font: 700 18px/1.2 "Chakra Petch", sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fff; margin-top: 8px;
+    text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  body.layout-counter .bar { width: 440px; max-width: 100%; margin: 10px auto 0; height: 6px; }
+  .c-stats { display: flex; justify-content: center; flex-wrap: wrap; row-gap: 12px; margin-top: 18px; }
+  .c-stat { padding: 0 28px; min-width: 150px; }
+  .c-stat + .c-stat { border-left: 1px solid rgba(255,255,255,.28); }
+  .c-num, .c-status-v { font: 700 42px/1.05 "Chakra Petch", sans-serif; color: var(--accent2); white-space: nowrap; font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 18px color-mix(in srgb, var(--accent2) 50%, transparent), 0 2px 4px rgba(0,0,0,.7); }
+  .c-status { margin-top: 16px; }
+  .c-status-v { font-size: 38px; }
+  body.layout-counter .subtitle { color: #e4e8ec; max-width: 820px; margin: 8px auto 0; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  body.layout-counter .brief-label { color: var(--accent); }
+  body.layout-counter .brief-win { max-width: 820px; margin-left: auto; margin-right: auto; text-align: left; }
+  body.layout-counter .brief { text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  body.layout-counter .err { text-shadow: 0 1px 3px #000; }
+  /* Eingeklappt: nur die Hauptzahlen nebeneinander */
+  body.layout-counter .minibody { display: flex; justify-content: center; padding: 14px 40px; text-align: center; }
+  body.layout-counter .mrow { padding: 0 26px; }
+  body.layout-counter .mrow + .mrow { border-top: 0; margin-top: 0; padding-top: 0; border-left: 1px solid rgba(255,255,255,.28); }
+  body.layout-counter .mrow-top, body.layout-counter .mini-row { flex-direction: column; align-items: center; gap: 2px; }
+  body.layout-counter .mini-title { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  body.layout-counter .mrow-time { color: var(--accent2); }
+  body.layout-counter .minibody .mini-value { font-size: 46px; color: var(--accent); font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 20px color-mix(in srgb, var(--accent) 55%, transparent), 0 2px 4px rgba(0,0,0,.7); }
+  body.layout-counter .mini-label { color: #e4e8ec; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  body.layout-counter .minibody .bar { display: none; }
+
+  /* ---------------- Ausrichtung nach Position ----------------
+     align-l / align-r: Inhalt zum nahen Bildrand hin ausgerichtet, eingeklappt schrumpft alles zu
+     dieser Seite. align-c (Mitte) bleibt zentriert. */
+
+  /* Karte rechts: gespiegelt */
+  body.align-r.layout-card .head { flex-direction: row-reverse; padding: 9px 16px 9px 12px; }
+  body.align-r.layout-card .timer { margin-left: 0; margin-right: auto; }
+  body.align-r.layout-card .title, body.align-r.layout-card .subtitle, body.align-r.layout-card .brief-label,
+  body.align-r.layout-card .brief, body.align-r.layout-card .err { text-align: right; }
+  body.align-r.layout-card .brief-label { display: block; }
+  body.align-r.layout-card .foot, body.align-r.layout-card .dots { justify-content: flex-end; }
+  body.align-r.layout-card .mrow-top { flex-direction: row-reverse; }
+  body.align-r.layout-card .mini-row { flex-direction: row-reverse; }
+  body.align-r.layout-card .mini-title { text-align: right; }
+
+  /* Leiste rechts: Kopf am rechten Rand, alles gespiegelt */
+  body.align-r.layout-bar .card { flex-direction: row-reverse; }
+  body.align-r.layout-bar .body { flex-direction: row-reverse; text-align: right; }
+  body.align-r.layout-bar .foot { align-items: flex-end; }
+  body.align-r.layout-bar .ticker { flex-direction: row-reverse; }
+  body.align-r.layout-bar .minibody.multi { flex-direction: row-reverse; }
+  body.align-r.layout-bar .minibody.multi .mrow:first-child { padding-left: 16px; padding-right: 0; }
+  body.align-r.layout-bar .mrow + .mrow { border-left: 0; border-right: 1px solid var(--track); }
+  body.align-r.layout-bar .mrow-top, body.align-r.layout-bar .mini-row { flex-direction: row-reverse; }
+  body.align-r.layout-bar .mini-title { text-align: right; }
+
+  /* Event-Zähler an der Seite: bündig zum Rand, eingeklappte Hauptzahlen untereinander */
+  body.layout-counter.align-l .stack { background: radial-gradient(ellipse 75% 85% at 0% 50%,
+    rgba(8,10,12,var(--bg-a)) 0, rgba(8,10,12,calc(var(--bg-a) * .55)) 60%, transparent 100%); }
+  body.layout-counter.align-r .stack { background: radial-gradient(ellipse 75% 85% at 100% 50%,
+    rgba(8,10,12,var(--bg-a)) 0, rgba(8,10,12,calc(var(--bg-a) * .55)) 60%, transparent 100%); }
+  body.layout-counter.align-l .body { text-align: left; padding: 20px 56px 22px 24px; }
+  body.layout-counter.align-r .body { text-align: right; padding: 20px 24px 22px 56px; }
+  body.layout-counter.align-l .c-stats { justify-content: flex-start; }
+  body.layout-counter.align-r .c-stats { justify-content: flex-end; }
+  body.layout-counter.align-l .c-stat:first-child { padding-left: 0; }
+  body.layout-counter.align-r .c-stat:last-child { padding-right: 0; }
+  body.layout-counter.align-l .bar, body.layout-counter.align-l .subtitle, body.layout-counter.align-l .brief-win { margin-left: 0; }
+  body.layout-counter.align-r .bar, body.layout-counter.align-r .subtitle, body.layout-counter.align-r .brief-win { margin-right: 0; }
+  body.layout-counter.align-r .brief { text-align: right; }
+  body.layout-counter:not(.align-c) .card.collapsed { min-width: 0; }
+  body.layout-counter:not(.align-c) .minibody { flex-direction: column; padding: 14px 24px; }
+  body.layout-counter.align-l .minibody { align-items: flex-start; text-align: left; padding-right: 56px; }
+  body.layout-counter.align-r .minibody { align-items: flex-end; text-align: right; padding-left: 56px; }
+  body.layout-counter:not(.align-c) .mrow { padding: 0; }
+  body.layout-counter:not(.align-c) .mrow + .mrow { border-left: 0; border-top: 1px solid rgba(255,255,255,.28);
+    margin-top: 10px; padding-top: 10px; }
+  body.layout-counter.align-l .mrow-top, body.layout-counter.align-l .mini-row { align-items: flex-start; }
+  body.layout-counter.align-r .mrow-top, body.layout-counter.align-r .mini-row { align-items: flex-end; }
+
+  /* ---------------- Konfigurator ---------------- */
+  .cfg { max-width: 1240px; margin: 0 auto; padding: 24px 16px 60px; display: grid;
+    grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
+  @media (max-width: 900px) { .cfg { grid-template-columns: 1fr; } }
+  .cfg h1 { grid-column: 1 / -1; margin: 0; font: 700 24px "Chakra Petch", sans-serif; color: var(--accent); letter-spacing: .04em; }
+  .cfg p.lead { grid-column: 1 / -1; margin: -12px 0 0; color: var(--muted); font-size: 14px; }
+  .panel { background: #1a1e22; border-radius: 6px; padding: 16px; }
+  .panel + .panel { margin-top: 16px; }
+  .panel h2 { font: 600 14px "Chakra Petch", sans-serif; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); margin: 0 0 10px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .field label output { color: var(--fg); }
+  .field input[type=text], .field input[type=number], .field select {
+    width: 100%; padding: 8px; background: #0f1214; border: 1px solid #2b3137; color: var(--fg); border-radius: 4px; font: inherit; font-size: 14px; }
+  .field input[type=range] { width: 100%; accent-color: var(--accent); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .colorrow { display: flex; gap: 8px; align-items: center; }
+  .colorrow input[type=color] { width: 48px; height: 36px; padding: 0; border: 1px solid #2b3137; border-radius: 4px; background: #0f1214; cursor: pointer; }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+  .swatches button { width: 24px; height: 24px; padding: 0; border-radius: 3px; border: 1px solid #2b3137; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 14px; margin-bottom: 10px; }
+  .oprow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 6px; }
+  .oprow input { padding: 7px; background: #0f1214; border: 1px solid #2b3137; color: var(--fg); border-radius: 4px; font: inherit; font-size: 13px; min-width: 0; }
+  button { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 4px; padding: 8px 12px;
+    font: 600 13px "Chakra Petch", sans-serif; cursor: pointer; letter-spacing: .04em; }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid #2b3137; }
+  .filebox { border: 1px solid #2b3137; border-radius: 6px; padding: 10px 12px; margin: 4px 0 12px; }
+  .filebtns { display: flex; gap: 8px; flex-wrap: wrap; }
+  #f-status.ok { color: #4fd18b; } #f-status.bad { color: #ff9e94; } #f-status.warn { color: var(--accent); }
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .presets button { background: #0f1214; color: var(--fg); border: 1px solid #2b3137; text-align: left; padding: 8px 10px; }
+  .presets button.on { border-color: var(--accent); color: var(--accent); }
+  .presets button small { display: block; font: 400 11px "Inter", sans-serif; color: var(--muted); margin-top: 2px; letter-spacing: 0; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 6px 0 0; }
+  .urlbox { display: flex; gap: 6px; }
+  .urlbox input { flex: 1; min-width: 0; padding: 8px; background: #0f1214; border: 1px solid #2b3137; color: var(--accent); border-radius: 4px; font: 12px ui-monospace, monospace; }
+  .preview { position: relative; width: 100%; aspect-ratio: 16 / 9; margin-top: 12px; overflow: hidden; border-radius: 6px;
+    background: radial-gradient(ellipse at 70% 20%, #6b7b62 0, #3d4a3c 35%, #23291f 70%), #2a3026; }
+  .preview.check-bg { background: repeating-conic-gradient(#2a2f34 0 25%, #22272b 0 50%) 0 0 / 24px 24px; }
+  .preview iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; }
+  .prevbar { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<script>
+/* =========================================================================
+   HD2 Order Overlay  –  ohne Parameter: Konfigurator, mit ?sources=…: Overlay
+   Quellen:  mo  |  op:C012  |  op:C012:316  (Clan 316)
+   ========================================================================= */
+
+const P = new URLSearchParams(location.search);
+const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
+const layout = ["bar", "counter"].includes(P.get("layout")) ? P.get("layout") : "card";
+const POS = ["tl", "tc", "tr", "bl", "bc", "br"];
+const CFG = {
+  sources: (P.get("sources") || "").split(",").map(s => s.trim()).filter(Boolean),
+  // Optional: Orders aus einer Datei (z. B. orders.json neben dem Overlay auf GitHub Pages).
+  // Die Datei wird bei jeder Aktualisierung neu gelesen – Änderungen erscheinen ohne neuen OBS-Link.
+  configUrl: P.get("config") || "",
+  lang: P.get("lang") === "en" ? "en" : "de",
+  rotate: Math.max(5, Number(P.get("rotate")) || 12),
+  refresh: Math.max(60, Number(P.get("refresh")) || 60),
+  layout,
+  pos: POS.includes(P.get("pos")) ? P.get("pos") : (layout === "bar" ? "bc" : "tl"),
+  margin: clamp(Number(P.get("margin")) || 40, 0, 400),
+  demo: P.get("demo") === "1",
+  scale: clamp(Number(P.get("scale")) || 1, 0.4, 3),
+  accent: /^[0-9a-f]{6}$/i.test(P.get("accent") || "") ? "#" + P.get("accent") : (layout === "counter" ? "#ffc233" : "#ffe711"),
+  accent2: /^[0-9a-f]{6}$/i.test(P.get("accent2") || "") ? "#" + P.get("accent2") : "#c9a6ff",
+  bgAlpha: P.has("bgalpha") ? clamp(Number(P.get("bgalpha")), 0, 100) / 100 : (P.get("bg") === "none" ? 0 : 0.85),
+  briefing: ({ "0": "off", off: "off", alt: "alt" })[P.get("briefing")] || "on",
+  anim: P.get("anim") === "fold" ? "fold" : "none",
+  closed: clamp(Number(P.get("closed")) || 45, 10, 1800),
+  brief: clamp(Number(P.get("brief")) || 20, 5, 300),     // Anzeigedauer des Briefings (Karte), Sekunden
+  briefh: clamp(Number(P.get("briefh")) || 220, 80, 800), // Maximalhöhe des Briefings (Karte), px
+  contact: P.get("contact") || "hd2-stream-overlay",
+  pulse: P.get("pulse") !== "0",
+};
+
+const I18N = {
+  de: {
+    mo: "Major Order", ao: "Alliance Order", co: "Clan Order", so: "Server Order", order: "Order",
+    kill: "Töte", collect: "Sammle", liberate: "Befreie", defend: "Verteidige", hold: "Halte",
+    net: "Netto-Planeten gewonnen", task: "Aufgabe", ops: "Operationen abschließen",
+    missions: "Missionen abschließen", any: "Gegner", defenses: "Verteidigungen",
+    liberated: "befreit", ended: "Beendet", signed: "Helldiver", clans: "Clans", reports: "Reports",
+    players: "Spieler online", noOrders: "Aktuell keine aktive Major Order", loading: "Lade Daten …",
+    stale: "Daten veraltet", noConn: "Keine Verbindung", pending: "Startet bald", orders: "Aktive Orders", remaining: "Restzeit", status: "Status", running: "Läuft", notTop: "Euer Clan nicht in den Top 5", briefing: "BRIEFING", d: "T", h: "Std", m: "Min",
+  },
+  en: {
+    mo: "Major Order", ao: "Alliance Order", co: "Clan Order", so: "Server Order", order: "Order",
+    kill: "Kill", collect: "Collect", liberate: "Liberate", defend: "Defend", hold: "Hold",
+    net: "Net planets gained", task: "Task", ops: "Complete operations",
+    missions: "Complete missions", any: "enemies", defenses: "defenses",
+    liberated: "liberated", ended: "Ended", signed: "Helldivers", clans: "Clans", reports: "Reports",
+    players: "players online", noOrders: "No active Major Order right now", loading: "Loading …",
+    stale: "Data stale", noConn: "No connection", pending: "Starting soon", orders: "Active orders", remaining: "Time left", status: "Status", running: "Running", notTop: "Your clan is not in the top 5", briefing: "BRIEFING", d: "d", h: "h", m: "m",
+  },
+};
+const T = I18N[CFG.lang];
+const RACES = { de: { 1: "Menschen", 2: "Terminiden", 3: "Automatons", 4: "Illuminaten" },
+                en: { 1: "Humans", 2: "Terminids", 3: "Automatons", 4: "Illuminate" } }[CFG.lang];
+const LOCALE = CFG.lang === "de" ? "de-DE" : "en-US";
+const NUM = new Intl.NumberFormat(LOCALE);
+const PCT = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmt = n => (n == null || isNaN(n)) ? "–" : NUM.format(Math.round(n));
+const pctFmt = n => PCT.format(n) + " %";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Schriftfarbe auf der Akzentfläche: dunkel oder hell, je nach Helligkeit der Akzentfarbe
+function onAccent(hex) {
+  const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; });
+  return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) > 0.25 ? "#111111" : "#ffffff";
+}
+
+/* ---------------------------- Datenquellen ---------------------------- */
+
+// Zwischenspeicher: Antworten bleiben 55 s im Browser. Lädt die Vorschau im Konfigurator oder die
+// Browserquelle in OBS neu, werden diese Daten genutzt statt erneut abzufragen (schont die Rate-Limits).
+const CACHE_MS = 55000;
+async function getJSON(url, opts, label) {
+  const key = "hd2c:" + url;
+  try {
+    const c = JSON.parse(localStorage.getItem(key) || "null");
+    if (c && Date.now() - c.t < CACHE_MS) return c.data;
+  } catch (e) {}
+  const r = await fetch(url, opts);
+  if (r.status === 429) throw new Error(`${label}: zu viele Anfragen, nächster Versuch gleich`);
+  if (!r.ok) throw new Error(`${label} ${r.status}`);
+  const data = await r.json();
+  try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), data })); } catch (e) { /* Speicher voll/gesperrt: ohne Cache weiter */ }
+  return data;
+}
+
+const API = "https://api.helldivers2.dev";
+async function hdApi(path) {
+  // Die Community-API verlangt beide Header, sonst antwortet sie mit 400
+  const headers = { "X-Super-Client": "hd2-stream-overlay", "X-Super-Contact": CFG.contact };
+  return getJSON(API + path, { headers }, "API");
+}
+
+let planetCache = { at: 0, byIndex: {} };
+async function getPlanets() {
+  if (Date.now() - planetCache.at < 120000) return planetCache.byIndex;
+  const list = await hdApi("/api/v1/planets");
+  const byIndex = {};
+  for (const p of list) byIndex[p.index] = p;
+  planetCache = { at: Date.now(), byIndex };
+  return byIndex;
+}
+
+// Aufgabe einer Major Order -> Anzeigezeile. valueTypes: 1 = Fraktion, 3 = Zielmenge, 12 = Planet
+function moTaskRow(task, prog, planets) {
+  const val = vt => { const i = (task.valueTypes || []).indexOf(vt); return i >= 0 ? task.values[i] : undefined; };
+  const goal = val(3), race = val(1), pIdx = val(12);
+  const planet = pIdx != null && planets ? planets[pIdx] : null;
+  const pName = planet ? planet.name : null;
+  const where = pName ? " · " + pName : "";
+  const raceTxt = race ? RACES[race] || T.any : T.any;
+  prog = Number(prog) || 0;
+  switch (task.type) {
+    case 3: return numRow(`${T.kill} ${raceTxt}${where}`, prog, goal);
+    case 2: return numRow(`${T.collect}${where}`, prog, goal);
+    case 7: return numRow(`${T.missions}${where}`, prog, goal);
+    case 9: return numRow(`${T.ops}${where}`, prog, goal);
+    case 12: return numRow(`${T.defend}: ${goal ? fmt(goal) + " " + T.defenses : ""}${where}`, prog, goal);
+    case 11: case 13: {
+      const label = `${task.type === 11 ? T.liberate : T.hold}: ${pName || "Planet " + pIdx}`;
+      if (prog >= 1) return { label, value: T.liberated, pct: 100, done: true };
+      let pct = null;
+      if (planet && planet.maxHealth) {
+        const src = planet.event && planet.event.maxHealth ? planet.event : planet;
+        pct = clamp((1 - src.health / src.maxHealth) * 100, 0, 100);
+      }
+      return { label, value: pct == null ? "–" : pctFmt(pct), pct: pct ?? 0, done: false };
+    }
+    case 15: return { label: T.net, value: (prog > 0 ? "+" : "") + fmt(prog), pct: prog > 0 ? 100 : 0, done: prog > 0 };
+    default: return goal > 1 ? numRow(T.task, prog, goal)
+      : { label: T.task, value: prog >= 1 ? "✔" : "…", pct: prog >= 1 ? 100 : 0, done: prog >= 1 };
+  }
+}
+function numRow(label, value, goal) {
+  if (goal && goal > 0) {
+    const pct = Math.min(100, value / goal * 100);
+    return { label, value: `${fmt(value)} / ${fmt(goal)}`, pct, done: value >= goal };
+  }
+  return { label, value: fmt(value), pct: null, done: false };
+}
+
+async function loadMajorOrders() {
+  const list = await hdApi("/api/v1/assignments");
+  const needsPlanets = list.some(a => (a.tasks || []).some(t => (t.valueTypes || []).includes(12)));
+  let planets = null;
+  if (needsPlanets) { try { planets = await getPlanets(); } catch (e) {} }
+  let war = null;
+  try { war = await hdApi("/api/v1/war"); } catch (e) {}
+  if (!list.length) return [{ badge: T.mo, title: T.noOrders, rows: [], foot: [] }];
+  return list.map(a => ({
+    badge: T.mo,
+    title: a.title || T.mo,
+    subtitle: a.briefing || a.description || "",
+    endsAt: a.expiration ? new Date(a.expiration) : null,
+    rows: (a.tasks || []).map((t, i) => moTaskRow(t, (a.progress || [])[i], planets)),
+    foot: war && war.statistics && war.statistics.playerCount ? [[fmt(war.statistics.playerCount), T.players]] : [],
+  }));
+}
+
+// Melchior-Orders: öffentlicher JSON-Endpunkt von hd2clans.com (CORS offen, Antworten ~60 s gecached).
+// Nicht offiziell dokumentiert – kann sich ändern. Bitte nicht öfter als alle 60 s abfragen.
+const HD2CLANS = "https://hd2clans.com/api/public/operation/";
+async function loadOperation(code, clan) {
+  const op = await getJSON(HD2CLANS + encodeURIComponent(code), {}, "hd2clans");
+  if (op.available === false) throw new Error(`Order ${code} nicht gefunden`);
+  return [opToOrder(op, code, clan)];
+}
+const utc = t => t ? new Date(String(t).replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(t) ? "" : "Z")) : null;
+function opToOrder(op, code, clan) {
+  const type = (op.order_type || "").toUpperCase();
+  const badge = type === "AO" ? T.ao : type === "CO" ? T.co : type === "SO" ? T.so : T.order;
+  const st = (op.status || "").toLowerCase();
+  const closed = !!op.is_closed || /complet|closed|ended|expired|inactive/.test(st);
+  const pending = st === "pending";
+  const metrics = Object.keys(op.metrics || {}).sort().map(k => ({ key: k, ...op.metrics[k] }));
+  const rows = metrics.map(m => {
+    const total = Number(m.total) || 0, goal = Number(m.goal) || 0;
+    return numRow(m.label, total, goal > 0 ? goal : null);
+  });
+  const foot = [];
+  if (op.signups != null) foot.push([fmt(op.signups), T.signed]);
+  if (op.participating_clans) foot.push([fmt(op.participating_clans), T.clans]);
+  if (op.reports != null) foot.push([fmt(op.reports), T.reports]);
+  // Eigener Clan: die API liefert die Top 5 je Metrik – liegt euer Clan darin, zeigen wir den Platz
+  if (clan) {
+    const first = metrics[0] && (op.top_clans || {})[metrics[0].key] || [];
+    const i = first.findIndex(c => String(c.id) === String(clan));
+    foot.unshift(i >= 0 ? [`#${i + 1}`, `${first[i].clan_name}`] : ["", T.notTop]);
+  }
+  let status = null;
+  if (closed) status = T.ended; else if (pending) status = T.pending;
+  return {
+    badge: `${badge} · ${code.toUpperCase()}`,
+    title: op.name || code,
+    subtitle: op.briefing || "",
+    endsAt: utc(op.ends_at),
+    status,
+    rows,
+    foot,
+  };
+}
+
+/* ------------------------------- Demo -------------------------------- */
+const demoStart = Date.now();
+function demoData(src) {
+  const grow = (n, rate) => Math.round(n + (Date.now() - demoStart) / 1000 * rate);
+  if (src === "mo") return [{
+    badge: T.mo, title: "Operation Iron Harvest",
+    subtitle: "Die Automatons haben eine Fabrikwelt reaktiviert. Super Earth befiehlt die vollständige Vernichtung ihrer Produktionskapazitäten, bevor der nächste Konvoi die Front erreicht. Jeder Helldiver wird gebraucht.",
+    endsAt: new Date(demoStart + 2.6 * 864e5),
+    rows: [numRow(`${T.kill} ${RACES[3]}`, grow(412_000_000, 9000), 750_000_000),
+           { label: `${T.liberate}: Vernmark`, value: pctFmt(63.4), pct: 63.4, done: false },
+           { label: `${T.hold}: Mort`, value: T.liberated, pct: 100, done: true }],
+    foot: [[fmt(grow(84213, 2)), T.players]],
+  }];
+  const clan = src.split(":")[2];
+  return [{
+    badge: `${T.co} · ${(src.split(":")[1] || "C012").toUpperCase()}`, title: "Operation Ember Line",
+    subtitle: "Haltet die Linie an der Ostflanke. Jede abgeschlossene Mission zählt für die Allianz.",
+    endsAt: new Date(demoStart + 19 * 36e5),
+    rows: [numRow("Bile Titans getötet", grow(clan ? 312 : 4210, .05), clan ? 500 : 6000),
+           numRow("Missionen abgeschlossen", grow(clan ? 88 : 1290, .02), clan ? 150 : 2000),
+           numRow("Propaganda-Türme zerstört", clan ? 14 : 377, null)],
+    foot: clan ? [["Euer Clan", ""], [fmt(23), T.signed], [fmt(140), T.reports]]
+               : [[fmt(612), T.signed], [fmt(48), T.clans], [fmt(5311), T.reports]],
+  }];
+}
+
+/* ------------------------------ Zustand ------------------------------ */
+const state = { bySource: {}, errors: {} };
+
+async function refreshSource(src) {
+  try {
+    let orders;
+    if (CFG.demo) orders = demoData(src);
+    else if (src === "mo") orders = await loadMajorOrders();
+    else if (src.startsWith("op:")) { const [, code, clan] = src.split(":"); orders = await loadOperation(code, clan); }
+    else throw new Error("Unbekannte Quelle: " + src);
+    state.bySource[src] = orders;
+    delete state.errors[src];
+  } catch (e) {
+    state.errors[src] = e.message || String(e);
+    console.warn("[overlay]", src, e);
+  }
+}
+// Orders-Datei lesen: {"sources": ["mo", "op:C2382:25"]}. Bei Fehlern bleiben die bisherigen Quellen.
+const SRC_RE = /^(mo|op:[A-Za-z]\d+(:\d+)?)$/;
+async function loadRemoteConfig() {
+  if (!CFG.configUrl) return;
+  try {
+    const url = new URL(CFG.configUrl, location.href);
+    url.searchParams.set("t", Math.floor(Date.now() / 30000)); // am CDN-Cache vorbei, höchstens alle 30 s neu
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`Orders-Datei ${r.status}`);
+    const j = await r.json();
+    const list = (Array.isArray(j.sources) ? j.sources : []).map(x => String(x).trim()).filter(x => SRC_RE.test(x));
+    if (!list.length) throw new Error("Orders-Datei enthält keine gültigen Quellen");
+    if (list.join(",") !== CFG.sources.join(",")) {
+      for (const k of Object.keys(state.bySource)) if (!list.includes(k)) { delete state.bySource[k]; delete state.errors[k]; }
+      CFG.sources = list;
+    }
+    delete state.errors.__config;
+  } catch (e) {
+    console.warn("[overlay] Orders-Datei:", e);
+    if (!CFG.sources.length) CFG.sources = ["mo"]; // Notfall: wenigstens die Major Order zeigen
+  }
+}
+
+async function refreshAll() {
+  await loadRemoteConfig();
+  for (const src of CFG.sources) await refreshSource(src); // nacheinander, schont das Rate-Limit
+  patchCurrent();
+}
+
+// Alle anzeigbaren Orders (eine Quelle kann mehrere Major Orders liefern)
+function slides() {
+  const out = [];
+  for (const src of CFG.sources) {
+    const orders = state.bySource[src], err = state.errors[src];
+    if (orders) orders.forEach((o, idx) => out.push({ src, idx, o, err: err ? `${T.stale} (${err})` : null }));
+    else if (err) out.push({ src, idx: 0, err: `${T.noConn}: ${err}`,
+      o: { badge: src.startsWith("op:") ? T.order : T.mo, title: src.startsWith("op:") ? src.split(":")[1] : T.mo, rows: [], foot: [] } });
+  }
+  return out;
+}
+// Ansichten: pro Order Statistik, bei briefing=alt vorher das Briefing
+function views() {
+  const out = [];
+  for (const s of slides()) {
+    if (CFG.briefing === "alt" && s.o.subtitle) out.push({ ...s, phase: "brief" });
+    out.push({ ...s, phase: "stats" });
+  }
+  return out;
+}
+function fresh(v) {
+  const o = (state.bySource[v.src] || [])[v.idx];
+  return o || v.o;
+}
+
+/* ------------------------------ Rendern ------------------------------ */
+let el = {}, current = null, shownKey = "", headEnds = null, headApprox = false, headStatus = null;
+
+function buildCard() {
+  document.getElementById("stage").innerHTML = `
+    <div class="card" id="card">
+      <div class="head"><span class="badge" id="badge">HD2</span><span class="timer" id="timer"></span></div>
+      <div class="tape"></div>
+      <div class="stack">
+        <div class="fold full"><div><div class="body" id="full"></div></div></div>
+        <div class="fold mini"><div><div class="minibody" id="mini"></div></div></div>
+      </div>
+      <div class="dots" id="dots"></div>
+    </div>`;
+  ["card", "badge", "timer", "full", "mini", "dots"].forEach(id => el[id] = document.getElementById(id));
+  if (layout === "bar") el.card.appendChild(el.dots); // Punkte bleiben in der Leiste unsichtbar
+}
+
+function countdown(d, approx) {
+  let s = Math.max(0, (d - Date.now()) / 1000);
+  if (s <= 0) return T.ended;
+  const dd = Math.floor(s / 86400); s -= dd * 86400;
+  const hh = Math.floor(s / 3600); s -= hh * 3600;
+  const mm = Math.floor(s / 60);
+  const txt = dd ? `${dd}${T.d} ${hh}${T.h}` : hh ? `${hh}${T.h} ${mm}${T.m}` : `${mm}${T.m}`;
+  return (approx ? "~" : "") + txt;
+}
+function setHead(o) {
+  el.badge.textContent = o.badge;
+  headEnds = o.endsAt || null; headApprox = !!o.endsApprox; headStatus = o.status || null;
+  tickTimer();
+}
+function tickTimer() {
+  if (!el.timer) return;
+  el.timer.textContent = headStatus || (headEnds ? countdown(headEnds, headApprox) : "");
+  document.querySelectorAll(".mrow-time[data-ends], .c-status-v[data-ends]").forEach(t => { if (t.dataset.ends) t.textContent = countdown(new Date(+t.dataset.ends)); });
+}
+function setDots(active) {
+  const all = slides();
+  el.dots.innerHTML = all.length > 1 ? all.map(s => `<i class="${active && s.src === active.src && s.idx === active.idx ? "on" : ""}"></i>`).join("") : "";
+}
+
+function rowsHTML(o, kb) {
+  return (o.rows || []).map((r, i) => `
+    <div class="row${r.done ? " done" : ""}">
+      <div class="row-top"><span class="row-label">${esc(r.label)}</span><span class="row-value" data-vk="${kb}|r${i}">${esc(r.value)}</span></div>
+      ${r.pct != null ? `<div class="bar"><div class="fill" data-k="${kb}|r${i}" data-pct="${r.pct.toFixed(2)}"></div></div>` : ""}
+    </div>`).join("");
+}
+function fullHTML(v, o) {
+  const kb = `${v.src}|${v.idx}`;
+  const err = v.err ? `<div class="err">${esc(v.err)}</div>` : "";
+  if (v.phase === "brief") {
+    if (layout === "bar") return `<div class="title">${esc(o.title)}</div>
+      <div class="ticker"><span class="ticker-label">${T.briefing}</span><div class="ticker-win"><span class="ticker-text">${esc(o.subtitle)}</span></div></div>`;
+    return `<div class="title">${esc(o.title)}</div><span class="brief-label">${T.briefing}</span><div class="brief-win"><div class="brief">${esc(o.subtitle)}</div></div>${err}`;
+  }
+  if (layout === "counter") return counterHTML(o, kb, err);
+  const foot = (o.foot || []).map(([val, l]) => `<span><b>${val}</b> ${esc(l)}</span>`).join("");
+  return `<div class="title">${esc(o.title)}</div>
+    ${o.subtitle && CFG.briefing === "on" ? `<div class="subtitle">${esc(o.subtitle)}</div>` : ""}
+    <div class="rows">${rowsHTML(o, kb)}</div>
+    ${foot ? `<div class="foot">${foot}</div>` : ""}${err}`;
+}
+// Event-Zähler: Hauptzahl groß, weitere Ziele und Statistiken als Zahlenreihe, Status darunter
+function counterHTML(o, kb, err) {
+  const h = headline(o);
+  const stats = [];
+  (o.rows || []).forEach((r, i) => { if (i !== h.i) stats.push({ v: r.value, l: r.label, k: `${kb}|r${i}` }); });
+  (o.foot || []).forEach(([v, l], i) => { if (l) stats.push({ v: String(v).replace(/<[^>]*>/g, ""), l, k: `${kb}|f${i}` }); });
+  const time = o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : T.running);
+  return `<div class="c-badge">${esc(o.badge)}</div>
+    <div class="c-hero" data-vk="${kb}|hero">${esc(h.value)}</div>
+    <div class="c-hero-label">${esc(h.label)}</div>
+    ${h.pct != null ? `<div class="bar"><div class="fill" data-k="${kb}|r${h.i}" data-pct="${h.pct.toFixed(2)}"></div></div>` : ""}
+    <div class="c-title">${esc(o.title)}</div>
+    ${o.subtitle && CFG.briefing === "on" ? `<div class="subtitle">${esc(o.subtitle)}</div>` : ""}
+    ${stats.length ? `<div class="c-stats">${stats.slice(0, 6).map(st => `<div class="c-stat"><div class="c-num" data-vk="${st.k}">${esc(st.v)}</div><div class="c-lbl">${esc(st.l)}</div></div>`).join("")}</div>` : ""}
+    <div class="c-status"><div class="c-status-v" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</div><div class="c-lbl">${o.endsAt && !o.status ? T.remaining : T.status}</div></div>
+    ${err}`;
+}
+
+// Kennzahl für die eingeklappte Ansicht: erste offene Aufgabe mit Fortschritt
+function headline(o) {
+  const rows = o.rows || [];
+  const r = rows.find(r => r.pct != null && !r.done) || rows.find(r => r.pct != null) || rows[0];
+  if (!r) return { value: "—", label: "", pct: null, i: -1 };
+  return { value: r.pct != null && r.value.includes("/") ? pctFmt(r.pct) : r.value, label: r.label, pct: r.pct, i: rows.indexOf(r) };
+}
+// Eingeklappte Ansicht: alle Orders untereinander (Karte) bzw. nebeneinander (Leiste)
+function miniAllHTML(all, multi) {
+  return all.map(sl => {
+    const o = sl.o, kb = `${sl.src}|${sl.idx}`, h = headline(o);
+    const time = multi ? (o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : "")) : "";
+    return `<div class="mrow">
+      <div class="mrow-top"><span class="mini-title">${esc(o.title)}</span>${time ? `<span class="mrow-time" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</span>` : ""}</div>
+      <div class="mini-row"><span class="mini-value" data-vk="${kb}|mini">${esc(h.value)}</span><span class="mini-label">${esc(h.label)}</span></div>
+      ${h.pct != null ? `<div class="bar"><div class="fill" data-k="${kb}|r${h.i}" data-pct="${h.pct.toFixed(2)}"></div></div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+// Balken merken sich ihren letzten Stand: nach neuem Rendern starten sie dort und wachsen nur
+// noch auf den neuen Wert, statt jedes Mal von 0 neu zu laden.
+const fillMem = {}, valMem = {};
+function growFills(root) {
+  const fills = [...root.querySelectorAll(".fill")];
+  fills.forEach(f => {
+    const k = f.dataset.k;
+    if (k && fillMem[k] != null) { f.style.transition = "none"; f.style.width = fillMem[k] + "%"; }
+  });
+  void root.offsetWidth; // Startbreite übernehmen, bevor die Animation beginnt
+  requestAnimationFrame(() => requestAnimationFrame(() => fills.forEach(f => {
+    f.style.transition = "";
+    f.style.width = f.dataset.pct + "%";
+    if (f.dataset.k) fillMem[f.dataset.k] = Number(f.dataset.pct);
+  })));
+  // Werte, die sich seit dem letzten Mal geändert haben, kurz in der Akzentfarbe aufleuchten lassen
+  root.querySelectorAll("[data-vk]").forEach(v => {
+    const k = v.dataset.vk, txt = v.textContent;
+    if (CFG.pulse && valMem[k] != null && valMem[k] !== txt) v.classList.add("changed");
+    if (layout === "counter" && valMem[k] !== txt) countUp(v, valMem[k], txt);
+    valMem[k] = txt;
+  });
+}
+// Event-Zähler: Zahlen zählen vom alten auf den neuen Wert hoch (beim ersten Anzeigen von 0)
+function parseLoc(t) {
+  const m = String(t || "").trim().match(/^(-?[\d.,]+)(\s?%)?$/);
+  if (!m) return null;
+  const raw = CFG.lang === "de" ? m[1].replace(/\./g, "").replace(",", ".") : m[1].replace(/,/g, "");
+  const n = Number(raw);
+  return isFinite(n) ? { n, pct: !!m[2] } : null;
+}
+function countUp(node, fromTxt, toTxt) {
+  const to = parseLoc(toTxt);
+  if (!to) return;
+  const from = fromTxt == null ? { n: 0, pct: to.pct } : parseLoc(fromTxt);
+  if (!from || from.pct !== to.pct || from.n === to.n) return;
+  const t0 = performance.now(), dur = fromTxt == null ? 1600 : 1200;
+  const step = now => {
+    const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    const n = from.n + (to.n - from.n) * e;
+    if (!node.isConnected) return;
+    node.textContent = p < 1 ? (to.pct ? pctFmt(n) : fmt(n)) : toTxt;
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function renderMiniAll() {
+  const all = slides(), multi = all.length > 1;
+  if (multi) { el.badge.textContent = T.orders; headEnds = null; headStatus = null; tickTimer(); }
+  else if (all[0]) setHead(all[0].o);
+  el.mini.classList.toggle("multi", multi);
+  el.mini.innerHTML = miniAllHTML(all, multi);
+  if (layout === "bar") el.card.style.setProperty("--cw", Math.min(1500, 218 + Math.max(1, all.length) * 330) + "px");
+  growFills(el.mini);
+}
+
+// Lauftext in der Leiste: Dauer richtet sich nach der Textlänge
+const TICKER_SPEED = 110; // px pro Sekunde – gut lesbar auch bei kleinem Stream-Ausschnitt
+function startTicker() {
+  const win = el.full.querySelector(".ticker-win"), txt = el.full.querySelector(".ticker-text");
+  if (!win || !txt) return 0;
+  const W = win.clientWidth, w = txt.scrollWidth;
+  const dur = (W + w) / TICKER_SPEED * 1000;
+  txt.animate([{ transform: `translateX(${W}px)` }, { transform: `translateX(${-w}px)` }], { duration: dur, easing: "linear", fill: "forwards" });
+  return dur + 600;
+}
+
+// Briefing in der Karte: passt der Text nicht in die Maximalhöhe, blättert er innerhalb der
+// eingestellten Briefing-Dauer seitenweise weiter: stehen lassen, sanft ein paar Zeilen weitergleiten,
+// wieder stehen lassen. Ruhiger als Dauer-Scrollen, bleibt bei 30 fps und niedriger Bitrate scharf.
+function startBriefScroll(durMs) {
+  const win = el.full.querySelector(".brief-win"), txt = el.full.querySelector(".brief");
+  if (!win || !txt) return;
+  const dist = Math.ceil(txt.scrollHeight - win.clientHeight);
+  if (dist <= 4) { win.classList.add("fits"); return; }
+  const lh = parseFloat(getComputedStyle(txt).lineHeight) || 27;
+  const page = Math.max(lh, Math.floor(win.clientHeight * 0.7 / lh) * lh); // ~70 % der Höhe, ganze Zeilen
+  const stops = [0];
+  while (stops[stops.length - 1] < dist) stops.push(Math.min(dist, Math.round(stops[stops.length - 1] + page)));
+  const moveMs = Math.min(900, durMs * 0.08);
+  const holdMs = Math.max(400, (durMs - (stops.length - 1) * moveMs) / stops.length);
+  const total = holdMs * stops.length + moveMs * (stops.length - 1);
+  const frames = [];
+  let t = 0;
+  stops.forEach((y, i) => {
+    frames.push({ transform: `translate3d(0,${-y}px,0)`, offset: t / total, easing: "linear" });
+    t += holdMs;
+    if (i < stops.length - 1) {
+      frames.push({ transform: `translate3d(0,${-y}px,0)`, offset: t / total, easing: "cubic-bezier(.45,0,.2,1)" });
+      t += moveMs;
+    } else frames.push({ transform: `translate3d(0,${-y}px,0)`, offset: 1 });
+  });
+  txt.animate(frames, { duration: total, fill: "forwards" });
+}
+
+async function showView(v) {
+  current = v;
+  const o = fresh(v);
+  setHead(o);
+  setDots(v);
+  const key = `${v.src}|${v.idx}|${v.phase}`;
+  if (key !== shownKey || v.phase === "brief") {
+    if (shownKey) { el.full.classList.add("fade"); await sleep(350); }
+    el.full.innerHTML = fullHTML(v, o);
+    shownKey = key;
+    el.full.classList.remove("fade");
+    growFills(el.full);
+  } // gleiche Ansicht: nichts neu aufbauen – neue Daten kommen über refreshAll -> patchCurrent
+  let dur = CFG.rotate * 1000;
+  if (v.phase === "brief") {
+    if (layout === "bar") dur = Math.max(4000, startTicker()); // Lauftext läuft einmal komplett durch
+    else { dur = CFG.brief * 1000; startBriefScroll(dur); }
+  }
+  await sleep(dur);
+}
+
+// Neue Daten in die sichtbare Ansicht übernehmen (Balken wachsen dank fillMem nur weiter)
+function patchCurrent() {
+  if (!current || !el.full) return;
+  if (current.phase === "mini") { renderMiniAll(); return; }
+  const o = fresh(current);
+  setHead(o);
+  if (current.phase !== "stats") return;
+  el.full.innerHTML = fullHTML(current, o);
+  growFills(el.full);
+}
+
+async function collapsedPhase() {
+  current = { phase: "mini" };
+  renderMiniAll();
+  el.card.classList.add("collapsed");
+  await sleep(CFG.closed * 1000); // neue Daten kommen über refreshAll -> patchCurrent hinein
+}
+
+async function runLoop() {
+  // Warten, bis jede Quelle einmal geantwortet hat (Daten oder Fehler), höchstens 15 s
+  const t0 = Date.now();
+  while (CFG.sources.some(x => !state.bySource[x] && !state.errors[x]) && Date.now() - t0 < 15000) await sleep(300);
+  while (!slides().length) await sleep(500);
+  for (;;) {
+    const vs = views();
+    if (CFG.anim === "fold") {
+      shownKey = ""; // nach dem Aufklappen mit frischem Inhalt beginnen
+      if (vs[0]) { // ersten Inhalt schon beim Aufklappen zeigen (Balken/Zahlen starten hier)
+        el.full.innerHTML = fullHTML(vs[0], fresh(vs[0]));
+        growFills(el.full);
+        shownKey = `${vs[0].src}|${vs[0].idx}|${vs[0].phase}`;
+      }
+      el.card.classList.remove("collapsed");
+      el.card.style.removeProperty("--cw");
+      await sleep(250);
+      for (const v of vs) await showView(v);
+      await collapsedPhase();
+    } else {
+      for (const v of vs) await showView(v);
+    }
+  }
+}
+
+function placeStage() {
+  const st = document.getElementById("stage").style, m = CFG.margin + "px";
+  const v = CFG.pos[0] === "t" ? "top" : "bottom", h = CFG.pos[1];
+  st[v] = m;
+  if (h === "l") st.left = m; else if (h === "r") st.right = m;
+  else { // Mitte: volle Breite, Inhalt zentriert – so steht die ganze Leinwandbreite zur Verfügung
+    st.left = "0"; st.right = "0"; st.display = "flex"; st.justifyContent = "center";
+  }
+  st.transform = `scale(${CFG.scale})`;
+  st.transformOrigin = `${v} ${h === "l" ? "left" : h === "r" ? "right" : "center"}`;
+}
+
+function startOverlay() {
+  document.documentElement.classList.add("overlay-mode");
+  const root = document.documentElement.style;
+  root.setProperty("--accent", CFG.accent);
+  root.setProperty("--on-accent", onAccent(CFG.accent));
+  root.setProperty("--accent2", CFG.accent2);
+  root.setProperty("--bg-a", CFG.bgAlpha);
+  root.setProperty("--briefh", CFG.briefh + "px");
+  document.body.classList.add("layout-" + layout, "align-" + CFG.pos[1]);
+  if (CFG.bgAlpha < 0.6) document.body.classList.add("thin");
+  buildCard();
+  placeStage();
+  el.full.innerHTML = `<div class="title">${T.loading}</div>`;
+  refreshAll();
+  setInterval(refreshAll, (CFG.demo ? 6 : CFG.refresh) * 1000);
+  setInterval(tickTimer, 15000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshAll(); });
+  runLoop();
+}
+
+/* ---------------------------- Konfigurator --------------------------- */
+const PRESETS = {
+  classic: { name: "Klassisch", hint: "Karte oben links, Briefing im Wechsel",
+    layout: "card", pos: "tl", scale: 100, bgalpha: 85, briefing: "alt", anim: "none" },
+  corner: { name: "Ecke kompakt", hint: "Rechts oben, klappt ein mit Zähler",
+    layout: "card", pos: "tr", scale: 90, bgalpha: 75, briefing: "off", anim: "fold", closed: 60 },
+  lower: { name: "Lower Third", hint: "Leiste unten mit Lauftext",
+    layout: "bar", pos: "bc", scale: 100, bgalpha: 80, briefing: "alt", anim: "none" },
+  ticker: { name: "Leiste dezent", hint: "Halbtransparent, klappt ein",
+    layout: "bar", pos: "bc", scale: 90, bgalpha: 50, briefing: "alt", anim: "fold", closed: 45 },
+  minimal: { name: "Minimal", hint: "Links unten, kaum Hintergrund",
+    layout: "card", pos: "bl", scale: 100, bgalpha: 25, briefing: "off", anim: "none" },
+  big: { name: "Groß & klar", hint: "Für kleine Stream-Ausschnitte",
+    layout: "card", pos: "tl", scale: 130, bgalpha: 90, briefing: "off", anim: "fold", closed: 40 },
+  counter: { name: "Event-Zähler", hint: "Leuchtende Zahlen, frei auf dem Bild",
+    layout: "counter", pos: "tc", scale: 100, bgalpha: 35, briefing: "off", anim: "none", accent: "#ffc233", accent2: "#c9a6ff" },
+  counterfold: { name: "Event-Zähler kompakt", hint: "Zählt hoch, klappt auf Hauptzahlen ein",
+    layout: "counter", pos: "bc", scale: 85, bgalpha: 35, briefing: "off", anim: "fold", closed: 60, accent: "#ffc233", accent2: "#c9a6ff" },
+  counterside: { name: "Event-Zähler Seite", hint: "Rechts oben, klappt auf eine Spalte ein",
+    layout: "counter", pos: "tr", scale: 80, bgalpha: 35, briefing: "off", anim: "fold", closed: 60, accent: "#ffc233", accent2: "#c9a6ff" },
+};
+
+function startSetup() {
+  document.body.classList.add("setup");
+  document.getElementById("stage").outerHTML = `
+  <div class="cfg">
+    <h1>HD2 ORDER OVERLAY</h1>
+    <p class="lead">Preset wählen, anpassen, Link kopieren und in OBS als Browserquelle in Leinwandgröße (1920 × 1080) einfügen.</p>
+    <div>
+      <div class="panel">
+        <h2>Presets</h2>
+        <div class="presets" id="presets">${Object.entries(PRESETS).map(([k, p]) =>
+          `<button type="button" data-p="${k}">${p.name}<small>${p.hint}</small></button>`).join("")}</div>
+      </div>
+      <div class="panel">
+        <h2>Quellen</h2>
+        <label class="check"><input type="checkbox" id="c-mo" checked> Major Order(s) aus dem Spiel</label>
+        <div class="field">
+          <label>Melchior-Orders (Code wie C2382, A001)</label>
+          <div id="ops"></div>
+          <button class="ghost" id="add-op" type="button">+ Order hinzufügen</button>
+        </div>
+        <p class="hint">Clan-ID: Zahl aus eurer Clan-URL (hd2clans.com/clan/<b>25</b>-…). Liegt euer Clan in den Top 5, wird der Platz angezeigt.</p>
+        <label class="check"><input type="checkbox" id="c-usefile"> Orders in Datei speichern (für dich und den Streamer bearbeitbar)</label>
+        <div id="filebox" class="filebox" hidden>
+          <p class="hint" style="margin-top:0">Die Liste oben ist der Editor. „Speichern" schreibt sie in die Datei im GitHub-Repository; das Overlay beim Streamer liest sie von dort. Der OBS-Link bleibt dabei immer gleich.</p>
+          <div class="two">
+            <div class="field"><label>GitHub-Repository</label><input type="text" id="c-repo" placeholder="dein-name/hd2-overlay"></div>
+            <div class="field"><label>Datei</label><input type="text" id="c-file" value="orders.json"></div>
+          </div>
+          <div class="field"><label>GitHub-Token (nur zum Speichern nötig)</label><input type="password" id="c-token" autocomplete="off" spellcheck="false" placeholder="github_pat_…"></div>
+          <label class="check"><input type="checkbox" id="c-remember"> Token auf diesem Gerät merken</label>
+          <div class="filebtns"><button type="button" class="ghost" id="f-load">Aus Datei laden</button><button type="button" id="f-save">In Datei speichern</button></div>
+          <p class="hint" id="f-status" role="status"></p>
+        </div>
+        <p class="hint" id="file-hint" hidden></p>
+        <label class="check"><input type="checkbox" id="c-demo"> Demo-Daten statt echter Daten</label>
+      </div>
+      <div class="panel">
+        <h2>Aussehen</h2>
+        <div class="two">
+          <div class="field"><label>Layout</label>
+            <select id="c-layout"><option value="card">Karte</option><option value="bar">Leiste</option><option value="counter">Event-Zähler</option></select></div>
+          <div class="field"><label>Position</label>
+            <select id="c-pos">
+              <option value="tl">Oben links</option><option value="tc">Oben Mitte</option><option value="tr">Oben rechts</option>
+              <option value="bl">Unten links</option><option value="bc">Unten Mitte</option><option value="br">Unten rechts</option>
+            </select></div>
+        </div>
+        <div class="field"><label>Größe <output id="o-scale"></output></label><input type="range" id="c-scale" min="60" max="180" step="5" value="100"></div>
+        <div class="field"><label>Abstand zum Rand <output id="o-margin"></output></label><input type="range" id="c-margin" min="0" max="200" step="5" value="40"></div>
+        <div class="field"><label>Hintergrund-Deckkraft <output id="o-bgalpha"></output></label><input type="range" id="c-bgalpha" min="0" max="100" step="5" value="85"></div>
+        <div class="field"><label>Akzentfarbe</label>
+          <div class="colorrow"><input type="color" id="c-accent" value="#ffe711">
+            <div class="swatches">${["#ffe711", "#ff9f1c", "#e63946", "#4fd18b", "#3fa7ff", "#b388ff", "#f4f4f4"].map(c =>
+              `<button type="button" data-c="${c}" style="background:${c}" title="${c}"></button>`).join("")}</div></div></div>
+        <div class="field"><label>Zweitfarbe (Zahlenreihe im Event-Zähler)</label>
+          <div class="colorrow"><input type="color" id="c-accent2" value="#c9a6ff"></div></div>
+      </div>
+      <div class="panel">
+        <h2>Ablauf</h2>
+        <div class="field"><label>Briefing</label>
+          <select id="c-briefing"><option value="off">Ausblenden</option><option value="on">Immer (gekürzt)</option><option value="alt">Im Wechsel mit der Statistik</option></select>
+          <p class="hint">Karte: Längere Texte scrollen innerhalb der Briefing-Dauer durch. Leiste: Das Briefing läuft als Lauftext einmal komplett durch.</p></div>
+        <div class="field"><label>Animation</label>
+          <select id="c-anim"><option value="none">Immer ausgeklappt</option><option value="fold">Aufklappen, durchlaufen, einklappen</option></select></div>
+        <label class="check"><input type="checkbox" id="c-pulse" checked> Geänderte Werte kurz aufleuchten lassen</label>
+        <div class="two">
+          <div class="field"><label>Anzeige je Seite (s)</label><input type="number" id="c-rotate" value="12" min="5"></div>
+          <div class="field"><label>Eingeklappt (s)</label><input type="number" id="c-closed" value="45" min="10"></div>
+        </div>
+        <div class="two">
+          <div class="field"><label>Briefing-Dauer (s)</label><input type="number" id="c-brief" value="20" min="5"></div>
+          <div class="field"><label>Briefing max. Höhe (px)</label><input type="number" id="c-briefh" value="220" min="80" step="10"></div>
+        </div>
+        <div class="two">
+          <div class="field"><label>Sprache</label>
+            <select id="c-lang"><option value="de">Deutsch</option><option value="en">English</option></select></div>
+          <div class="field"><label>Kontakt für die API</label><input type="text" id="c-contact" placeholder="z. B. Discord-Name"></div>
+        </div>
+      </div>
+    </div>
+    <div style="position:sticky;top:16px">
+      <div class="panel">
+        <h2>Link für OBS</h2>
+        <div class="urlbox"><input type="text" id="out" readonly><button id="copy" type="button">Kopieren</button></div>
+        <p class="hint">Browserquelle in OBS: Breite 1920, Höhe 1080 – Position und Größe stellt das Overlay selbst ein.</p>
+        <div class="preview" id="prevbox"><iframe id="prev" title="Vorschau" tabindex="-1"></iframe></div>
+        <div class="prevbar">
+          <span class="hint" style="margin:0">Vorschau der ganzen Leinwand, verkleinert.</span>
+          <label class="check" style="margin:0"><input type="checkbox" id="c-checker"> Schachbrett-Hintergrund</label>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  const $ = id => document.getElementById(id);
+  const addOp = (code = "", clan = "") => {
+    const row = document.createElement("div");
+    row.className = "oprow";
+    row.innerHTML = `<input placeholder="Code, z. B. C012" value="${esc(code)}"><input placeholder="Clan-ID (optional)" value="${esc(clan)}"><button class="ghost" type="button">✕</button>`;
+    row.querySelector("button").onclick = () => { row.remove(); update(); };
+    row.querySelectorAll("input").forEach(i => i.oninput = () => update());
+    $("ops").appendChild(row);
+  };
+  $("add-op").onclick = () => { addOp(); update(); };
+
+  function markPreset(k) { document.querySelectorAll("#presets button").forEach(b => b.classList.toggle("on", b.dataset.p === k)); }
+  function applyPreset(k) {
+    const p = PRESETS[k];
+    $("c-layout").value = p.layout; $("c-pos").value = p.pos; $("c-scale").value = p.scale;
+    $("c-bgalpha").value = p.bgalpha; $("c-briefing").value = p.briefing; $("c-anim").value = p.anim;
+    if (p.closed) $("c-closed").value = p.closed;
+    $("c-accent").value = p.accent || "#ffe711";
+    $("c-accent2").value = p.accent2 || "#c9a6ff";
+    markPreset(k); update();
+  }
+  document.querySelectorAll("#presets button").forEach(b => b.onclick = () => applyPreset(b.dataset.p));
+  document.querySelectorAll(".swatches button").forEach(b => b.onclick = () => { $("c-accent").value = b.dataset.c; update(); });
+
+  let timer;
+  function update(fromUser) {
+    if (fromUser) markPreset(null);
+    const p = new URLSearchParams();
+    const src = [];
+    if ($("c-mo").checked) src.push("mo");
+    document.querySelectorAll(".oprow").forEach(r => {
+      const [code, clan] = [...r.querySelectorAll("input")].map(i => i.value.trim());
+      if (/^[a-z]\d+$/i.test(code)) src.push("op:" + code.toUpperCase() + (/^\d+$/.test(clan) ? ":" + clan : ""));
+    });
+    p.set("sources", src.join(",") || "mo"); // Vorschau zeigt immer die Liste im Editor
+    if ($("c-demo").checked) p.set("demo", "1");
+    p.set("layout", $("c-layout").value);
+    p.set("pos", $("c-pos").value);
+    if (+$("c-scale").value !== 100) p.set("scale", (+$("c-scale").value / 100).toFixed(2));
+    if (+$("c-margin").value !== 40) p.set("margin", $("c-margin").value);
+    p.set("bgalpha", $("c-bgalpha").value);
+    const acc = $("c-accent").value.replace("#", "").toLowerCase();
+    if (acc !== ($("c-layout").value === "counter" ? "ffc233" : "ffe711")) p.set("accent", acc);
+    const acc2 = $("c-accent2").value.replace("#", "").toLowerCase();
+    if (acc2 !== "c9a6ff") p.set("accent2", acc2);
+    if ($("c-briefing").value !== "on") p.set("briefing", $("c-briefing").value);
+    if ($("c-anim").value === "fold") { p.set("anim", "fold"); p.set("closed", $("c-closed").value); }
+    if (+$("c-rotate").value !== 12) p.set("rotate", $("c-rotate").value);
+    if ($("c-briefing").value === "alt" && +$("c-brief").value !== 20) p.set("brief", $("c-brief").value);
+    if ($("c-briefing").value === "alt" && +$("c-briefh").value !== 220) p.set("briefh", $("c-briefh").value);
+    if ($("c-lang").value !== "de") p.set("lang", $("c-lang").value);
+    if ($("c-contact").value.trim()) p.set("contact", $("c-contact").value.trim());
+    if (!$("c-pulse").checked) p.set("pulse", "0");
+    $("o-scale").textContent = $("c-scale").value + " %";
+    $("o-margin").textContent = $("c-margin").value + " px";
+    $("o-bgalpha").textContent = $("c-bgalpha").value + " %";
+    document.documentElement.style.setProperty("--accent", $("c-accent").value);
+    document.documentElement.style.setProperty("--on-accent", onAccent($("c-accent").value));
+    $("prevbox").classList.toggle("check-bg", $("c-checker").checked);
+    const base = location.href.split(/[?#]/)[0];
+    const url = base + "?" + p.toString();
+    // OBS-Link: im Datei-Modus statt der Liste die Datei (Link bleibt bei Änderungen gleich)
+    const obs = new URLSearchParams(p);
+    if ($("c-usefile").checked) { obs.delete("sources"); obs.set("config", $("c-file").value.trim() || "orders.json"); }
+    $("out").value = base + "?" + obs.toString();
+    $("filebox").hidden = !$("c-usefile").checked;
+    $("file-hint").hidden = !($("c-usefile").checked && location.protocol === "file:");
+    $("file-hint").textContent = "Hinweis: Du hast den Konfigurator lokal geöffnet. Damit der Link beim Streamer funktioniert, öffne ihn über eure GitHub-Pages-Adresse und kopiere den Link dort.";
+    if ($("c-usefile").checked) markDirty(src);
+    clearTimeout(timer);
+    timer = setTimeout(() => { if ($("prev").src !== url) $("prev").src = url; }, 900);
+  }
+  function fitPreview() { $("prev").style.transform = `scale(${$("prevbox").clientWidth / 1920})`; }
+  new ResizeObserver(fitPreview).observe($("prevbox"));
+  document.querySelectorAll(".cfg input, .cfg select").forEach(x => {
+    x.addEventListener("input", () => update(x.closest(".panel") && !["c-mo", "c-demo", "c-checker", "c-contact", "c-lang", "c-pulse", "c-usefile", "c-repo", "c-file", "c-token", "c-remember"].includes(x.id)));
+  });
+  $("copy").onclick = async () => {
+    try { await navigator.clipboard.writeText($("out").value); } catch (e) { $("out").select(); document.execCommand("copy"); }
+    $("copy").textContent = "Kopiert ✔"; setTimeout(() => $("copy").textContent = "Kopieren", 1500);
+  };
+  /* ---- Orders-Datei über die GitHub-API lesen und schreiben ----
+     Lesen geht bei öffentlichen Repositories ohne Token. Zum Speichern braucht jede Person
+     (du, der Streamer) einen eigenen Fine-grained Token mit Schreibrecht nur für dieses Repository. */
+  const GH = "https://api.github.com";
+  let savedList = null;
+  const fstatus = (t, cls) => { $("f-status").textContent = t; $("f-status").className = "hint " + (cls || ""); };
+  const ghRepo = () => $("c-repo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/+$/, "");
+  const ghPath = () => ($("c-file").value.trim() || "orders.json").split("/").map(encodeURIComponent).join("/");
+  function ghHeaders(withToken) {
+    const h = { Accept: "application/vnd.github+json" };
+    const t = $("c-token").value.trim();
+    if (withToken && t) h.Authorization = "Bearer " + t;
+    return h;
+  }
+  const b64enc = str => btoa(unescape(encodeURIComponent(str)));
+  const b64dec = str => decodeURIComponent(escape(atob(str.replace(/\n/g, ""))));
+  function ghError(r) {
+    if (r.status === 401) return "Token ungültig oder abgelaufen.";
+    if (r.status === 403) return "Keine Berechtigung – hat der Token Schreibrecht (Contents: Read and write) für dieses Repository?";
+    if (r.status === 404) return "Repository oder Datei nicht gefunden – Name prüfen (bei privaten Repositories braucht auch das Laden einen Token).";
+    if (r.status === 409 || r.status === 422) return "Die Datei wurde gerade woanders geändert – bitte erneut laden.";
+    return "GitHub antwortet mit Fehler " + r.status + ".";
+  }
+  async function ghGet() {
+    if (!/^[\w.-]+\/[\w.-]+$/.test(ghRepo())) throw new Error("Bitte Repository als „name/repository\" eintragen.");
+    const r = await fetch(`${GH}/repos/${ghRepo()}/contents/${ghPath()}?t=${Date.now()}`, { headers: ghHeaders(true), cache: "no-store" });
+    if (r.status === 404 && $("c-token").value.trim()) return { sha: null, data: null }; // Datei gibt es noch nicht
+    if (!r.ok) throw new Error(ghError(r));
+    const j = await r.json();
+    return { sha: j.sha, data: JSON.parse(b64dec(j.content || "")) };
+  }
+  function listFromEditor() {
+    const src = [];
+    if ($("c-mo").checked) src.push("mo");
+    document.querySelectorAll(".oprow").forEach(r => {
+      const [code, clan] = [...r.querySelectorAll("input")].map(i => i.value.trim());
+      if (/^[a-z]\d+$/i.test(code)) src.push("op:" + code.toUpperCase() + (/^\d+$/.test(clan) ? ":" + clan : ""));
+    });
+    return src;
+  }
+  function fillEditor(list) {
+    $("c-mo").checked = list.includes("mo");
+    $("ops").innerHTML = "";
+    list.filter(x => x.startsWith("op:")).forEach(x => { const q = x.split(":"); addOp(q[1], q[2] || ""); });
+    if (!$("ops").children.length) addOp();
+  }
+  function markDirty(list) {
+    if (savedList && list.join(",") !== savedList.join(",")) fstatus("Ungespeicherte Änderungen – zum Übernehmen „In Datei speichern\".", "warn");
+  }
+  function rememberSettings() {
+    try {
+      localStorage.setItem("hd2-file", JSON.stringify({ use: $("c-usefile").checked, repo: $("c-repo").value.trim(), file: $("c-file").value.trim() }));
+      if ($("c-remember").checked && $("c-token").value.trim()) localStorage.setItem("hd2-ghtoken", $("c-token").value.trim());
+      else localStorage.removeItem("hd2-ghtoken");
+    } catch (e) {}
+  }
+  async function loadFile() {
+    fstatus("Lade …");
+    try {
+      const { data } = await ghGet();
+      const list = data && Array.isArray(data.sources) ? data.sources.filter(x => SRC_RE.test(String(x))) : null;
+      if (!list) { fstatus("Datei gibt es noch nicht – trage Orders ein und speichere.", "warn"); savedList = []; return; }
+      savedList = list;
+      fillEditor(list);
+      update();
+      fstatus(`Geladen: ${list.length} Quelle(n).`, "ok");
+    } catch (e) { fstatus(e.message, "bad"); }
+  }
+  async function saveFile() {
+    rememberSettings();
+    if (!$("c-token").value.trim()) { fstatus("Zum Speichern bitte deinen GitHub-Token eintragen.", "bad"); return; }
+    const list = listFromEditor();
+    if (!list.length) { fstatus("Bitte mindestens eine Quelle auswählen.", "bad"); return; }
+    fstatus("Speichere …");
+    const content = b64enc(JSON.stringify({ sources: list }, null, 2) + "\n");
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const { sha } = await ghGet();
+        const body = { message: "Orders aktualisiert: " + list.join(", "), content };
+        if (sha) body.sha = sha;
+        const r = await fetch(`${GH}/repos/${ghRepo()}/contents/${ghPath()}`, {
+          method: "PUT", headers: Object.assign({ "Content-Type": "application/json" }, ghHeaders(true)), body: JSON.stringify(body),
+        });
+        if (r.ok) { savedList = list; fstatus("Gespeichert ✔ – das Overlay beim Streamer übernimmt die Orders in 1–2 Minuten.", "ok"); return; }
+        if ((r.status === 409 || r.status === 422) && attempt === 0) continue; // jemand hat parallel gespeichert: neu versuchen
+        throw new Error(ghError(r));
+      }
+    } catch (e) { fstatus(e.message, "bad"); }
+  }
+  $("f-load").onclick = loadFile;
+  $("f-save").onclick = saveFile;
+  ["c-repo", "c-file", "c-usefile", "c-remember"].forEach(id => $(id).addEventListener("change", rememberSettings));
+  $("c-remember").addEventListener("change", () => { if (!$("c-remember").checked) try { localStorage.removeItem("hd2-ghtoken"); } catch (e) {} });
+
+  try { const c = localStorage.getItem("hd2-contact"); if (c) $("c-contact").value = c; } catch (e) {}
+  $("c-contact").addEventListener("change", () => { try { localStorage.setItem("hd2-contact", $("c-contact").value.trim()); } catch (e) {} });
+  addOp();
+  applyPreset("classic");
+  fitPreview();
+  let fileCfg = {};
+  try { fileCfg = JSON.parse(localStorage.getItem("hd2-file") || "{}"); const t = localStorage.getItem("hd2-ghtoken"); if (t) { $("c-token").value = t; $("c-remember").checked = true; } } catch (e) {}
+  // Auf GitHub Pages (name.github.io/repo/) das Repository automatisch vorbelegen
+  const gh = location.hostname.match(/^([\w-]+)\.github\.io$/i);
+  const autoRepo = gh ? `${gh[1]}/${location.pathname.split("/").filter(Boolean)[0] && !location.pathname.split("/").filter(Boolean)[0].endsWith(".html") ? location.pathname.split("/").filter(Boolean)[0] : gh[1] + ".github.io"}` : "";
+  $("c-repo").value = fileCfg.repo || autoRepo;
+  if (fileCfg.file) $("c-file").value = fileCfg.file;
+  if (fileCfg.use || gh) $("c-usefile").checked = true;
+  update();
+  if ($("c-usefile").checked && $("c-repo").value) loadFile();
+}
+
+if (CFG.sources.length || CFG.configUrl) startOverlay(); else startSetup();
+</script>
+</body>
+</html>
