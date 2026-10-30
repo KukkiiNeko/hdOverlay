@@ -92,6 +92,7 @@
     will-change: transform; transform: translate3d(0,0,0); backface-visibility: hidden; }
   .brief-win.fits .brief { padding-bottom: 0; }
   .rows { margin-top: 12px; display: grid; gap: 12px; }
+  .body > .rows:first-child, .body > .subtitle:first-child { margin-top: 0; }
   .row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
   .row-label { font-weight: 600; font-size: 17px; line-height: 1.25; }
   .row-value { font: 700 19px/1.2 "Chakra Petch", sans-serif; white-space: nowrap; }
@@ -352,21 +353,21 @@ const CFG = {
 const I18N = {
   de: {
     mo: "Major Order", ao: "Alliance Order", co: "Clan Order", so: "Server Order", order: "Order",
-    kill: "Töte", collect: "Sammle", liberate: "Befreie", defend: "Verteidige", hold: "Halte",
+    kill: "Töte", collect: "Sammle", samples: "Proben", specific: "bestimmter Gegnertyp", liberate: "Befreie", defend: "Verteidige", hold: "Halte",
     net: "Netto-Planeten gewonnen", task: "Aufgabe", ops: "Operationen abschließen",
     missions: "Missionen abschließen", any: "Gegner", defenses: "Verteidigungen",
     liberated: "befreit", ended: "Beendet", signed: "Helldiver", clans: "Clans", reports: "Reports",
     players: "Spieler online", noOrders: "Aktuell keine aktive Major Order", loading: "Lade Daten …",
-    stale: "Daten veraltet", noConn: "Keine Verbindung", pending: "Startet bald", orders: "Aktive Orders", remaining: "Restzeit", status: "Status", running: "Läuft", notTop: "Euer Clan nicht in den Top 5", briefing: "BRIEFING", d: "T", h: "Std", m: "Min",
+    stale: "Daten veraltet", noConn: "Keine Verbindung", pending: "Startet bald", orders: "Aktive Orders", sop: "Strategic Opportunity", minor: "Minor Order", remaining: "Restzeit", status: "Status", running: "Läuft", notTop: "Euer Clan nicht in den Top 5", briefing: "BRIEFING", d: "T", h: "Std", m: "Min",
   },
   en: {
     mo: "Major Order", ao: "Alliance Order", co: "Clan Order", so: "Server Order", order: "Order",
-    kill: "Kill", collect: "Collect", liberate: "Liberate", defend: "Defend", hold: "Hold",
+    kill: "Kill", collect: "Collect", samples: "samples", specific: "specific enemy type", liberate: "Liberate", defend: "Defend", hold: "Hold",
     net: "Net planets gained", task: "Task", ops: "Complete operations",
     missions: "Complete missions", any: "enemies", defenses: "defenses",
     liberated: "liberated", ended: "Ended", signed: "Helldivers", clans: "Clans", reports: "Reports",
     players: "players online", noOrders: "No active Major Order right now", loading: "Loading …",
-    stale: "Data stale", noConn: "No connection", pending: "Starting soon", orders: "Active orders", remaining: "Time left", status: "Status", running: "Running", notTop: "Your clan is not in the top 5", briefing: "BRIEFING", d: "d", h: "h", m: "m",
+    stale: "Data stale", noConn: "No connection", pending: "Starting soon", orders: "Active orders", sop: "Strategic Opportunity", minor: "Minor Order", remaining: "Time left", status: "Status", running: "Running", notTop: "Your clan is not in the top 5", briefing: "BRIEFING", d: "d", h: "h", m: "m",
   },
 };
 const T = I18N[CFG.lang];
@@ -432,8 +433,9 @@ function moTaskRow(task, prog, planets) {
   const raceTxt = race ? RACES[race] || T.any : T.any;
   prog = Number(prog) || 0;
   switch (task.type) {
-    case 3: return numRow(`${T.kill} ${raceTxt}${where}`, prog, goal);
-    case 2: return numRow(`${T.collect}${where}`, prog, goal);
+    // valueType 4 = bestimmte Gegnereinheit, 5 = Gegenstand (z. B. Probenart) – die IDs sind nicht öffentlich zugeordnet
+    case 3: return numRow(`${T.kill} ${raceTxt}${val(4) ? ` (${T.specific})` : ""}${where}`, prog, goal);
+    case 2: return numRow(`${T.collect} ${race ? (CFG.lang === "de" ? `${raceTxt.replace(/^Automatons$/, "Automaton")}-${T.samples}` : `${raceTxt.replace(/^Automatons$/, "Automaton")} ${T.samples}`) : T.samples}${where}`, prog, goal);
     case 7: return numRow(`${T.missions}${where}`, prog, goal);
     case 9: return numRow(`${T.ops}${where}`, prog, goal);
     case 12: return numRow(`${T.defend}: ${goal ? fmt(goal) + " " + T.defenses : ""}${where}`, prog, goal);
@@ -460,6 +462,21 @@ function numRow(label, value, goal) {
   return { label, value: fmt(value), pct: null, done: false };
 }
 
+// Das Spiel unterscheidet Auftragsarten nur über den Titel ("MAJOR ORDER", "STRATEGIC OPPORTUNITY" …).
+// Ist der Titel nur so eine Typ-Bezeichnung, wird er zur Kopfzeile und es gibt keinen eigenen Namen –
+// sonst stünde dasselbe doppelt da. Ein echter Name (z. B. "Operation …") bleibt als Titel erhalten.
+function assignmentKind(rawTitle) {
+  const t = String(rawTitle || "").trim();
+  const kinds = [
+    [/^major orders?$/i, T.mo], [/^strategic opportunit(y|ies)$/i, T.sop], [/^minor orders?$/i, T.minor],
+    [/^elite operations?$/i, "Elite Operation"], [/^strategic imperatives?$/i, "Strategic Imperative"],
+  ];
+  for (const [re, label] of kinds) if (re.test(t)) return { badge: label, title: null };
+  if (/opportunit/i.test(t)) return { badge: T.sop, title: t };
+  return { badge: T.mo, title: t || null };
+}
+const nameOf = o => o.title || o.badge;
+
 async function loadMajorOrders() {
   const list = await hdApi("/api/v1/assignments");
   const needsPlanets = list.some(a => (a.tasks || []).some(t => (t.valueTypes || []).includes(12)));
@@ -469,8 +486,7 @@ async function loadMajorOrders() {
   try { war = await hdApi("/api/v1/war"); } catch (e) {}
   if (!list.length) return [{ badge: T.mo, title: T.noOrders, rows: [], foot: [] }];
   return list.map(a => ({
-    badge: T.mo,
-    title: a.title || T.mo,
+    ...assignmentKind(a.title),
     subtitle: a.briefing || a.description || "",
     endsAt: a.expiration ? new Date(a.expiration) : null,
     rows: (a.tasks || []).map((t, i) => moTaskRow(t, (a.progress || [])[i], planets)),
@@ -677,13 +693,13 @@ function fullHTML(v, o) {
   const kb = `${v.src}|${v.idx}`;
   const err = v.err ? `<div class="err">${esc(v.err)}</div>` : "";
   if (v.phase === "brief") {
-    if (layout === "bar") return `<div class="title">${esc(o.title)}</div>
+    if (layout === "bar") return `${o.title ? `<div class="title">${esc(o.title)}</div>` : ""}
       <div class="ticker"><span class="ticker-label">${T.briefing}</span><div class="ticker-win"><span class="ticker-text">${esc(o.subtitle)}</span></div></div>`;
-    return `<div class="title">${esc(o.title)}</div><span class="brief-label">${T.briefing}</span><div class="brief-win"><div class="brief">${esc(o.subtitle)}</div></div>${err}`;
+    return `${o.title ? `<div class="title">${esc(o.title)}</div>` : ""}<span class="brief-label">${T.briefing}</span><div class="brief-win"><div class="brief">${esc(o.subtitle)}</div></div>${err}`;
   }
   if (layout === "counter") return counterHTML(o, kb, err);
   const foot = (o.foot || []).map(([val, l]) => `<span><b>${val}</b> ${esc(l)}</span>`).join("");
-  return `<div class="title">${esc(o.title)}</div>
+  return `${o.title ? `<div class="title">${esc(o.title)}</div>` : ""}
     ${o.subtitle && CFG.briefing === "on" ? `<div class="subtitle">${esc(o.subtitle)}</div>` : ""}
     <div class="rows">${rowsHTML(o, kb)}</div>
     ${foot ? `<div class="foot">${foot}</div>` : ""}${err}`;
@@ -699,7 +715,7 @@ function counterHTML(o, kb, err) {
     <div class="c-hero" data-vk="${kb}|hero">${esc(h.value)}</div>
     <div class="c-hero-label">${esc(h.label)}</div>
     ${h.pct != null ? `<div class="bar"><div class="fill" data-k="${kb}|r${h.i}" data-pct="${h.pct.toFixed(2)}"></div></div>` : ""}
-    <div class="c-title">${esc(o.title)}</div>
+    ${o.title ? `<div class="c-title">${esc(o.title)}</div>` : ""}
     ${o.subtitle && CFG.briefing === "on" ? `<div class="subtitle">${esc(o.subtitle)}</div>` : ""}
     ${stats.length ? `<div class="c-stats">${stats.slice(0, 6).map(st => `<div class="c-stat"><div class="c-num" data-vk="${st.k}">${esc(st.v)}</div><div class="c-lbl">${esc(st.l)}</div></div>`).join("")}</div>` : ""}
     <div class="c-status"><div class="c-status-v" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</div><div class="c-lbl">${o.endsAt && !o.status ? T.remaining : T.status}</div></div>
@@ -719,7 +735,7 @@ function miniAllHTML(all, multi) {
     const o = sl.o, kb = `${sl.src}|${sl.idx}`, h = headline(o);
     const time = multi ? (o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : "")) : "";
     return `<div class="mrow">
-      <div class="mrow-top"><span class="mini-title">${esc(o.title)}</span>${time ? `<span class="mrow-time" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</span>` : ""}</div>
+      <div class="mrow-top"><span class="mini-title">${esc(nameOf(o))}</span>${time ? `<span class="mrow-time" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</span>` : ""}</div>
       <div class="mini-row"><span class="mini-value" data-vk="${kb}|mini">${esc(h.value)}</span><span class="mini-label">${esc(h.label)}</span></div>
       ${h.pct != null ? `<div class="bar"><div class="fill" data-k="${kb}|r${h.i}" data-pct="${h.pct.toFixed(2)}"></div></div>` : ""}
     </div>`;
@@ -779,7 +795,7 @@ function railHTML(all) {
     const time = o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : "");
     const isPct = /%$/.test(String(h.value).trim());
     return `<div class="ritem">
-      <div class="ritem-title">${esc(o.title)}</div>
+      <div class="ritem-title">${esc(nameOf(o))}</div>
       <div class="ritem-row"><span class="ritem-val" data-vk="${kb}|mini">${esc(h.value)}</span>${time ? `<span class="ritem-time mrow-time" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</span>` : ""}</div>
       ${!isPct && h.label ? `<div class="ritem-label">${esc(h.label)}</div>` : ""}
     </div>`;
