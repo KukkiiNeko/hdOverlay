@@ -295,6 +295,14 @@
   .posgrid button:hover i { background: var(--fg); }
   .posgrid button[aria-checked="true"] { border: 1px solid var(--accent); }
   .posgrid button[aria-checked="true"] i { background: var(--accent); }
+  .saverow { display: flex; gap: 6px; margin-top: 8px; }
+  .saverow input { flex: 1; min-width: 0; padding: 8px; background: #0f1214; border: 1px solid #2b3137; color: var(--fg); border-radius: 4px; font: inherit; font-size: 13px; }
+  #mypresets:empty { display: none; }
+  #mypresets .mp { position: relative; padding-right: 28px; }
+  #mypresets .mp-del { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; padding: 0; line-height: 1;
+    background: transparent; border: 0; color: var(--muted); font-size: 13px; }
+  #mypresets .mp-del:hover { color: #ff9e94; }
+  .importbox summary { cursor: pointer; color: var(--muted); font-size: 12.5px; margin-top: 10px; }
   .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .presets button { background: #0f1214; color: var(--fg); border: 1px solid #2b3137; text-align: left; padding: 8px 10px; }
   .presets button.on { border-color: var(--accent); color: var(--accent); }
@@ -1012,6 +1020,15 @@ function startSetup() {
         <h2>Presets</h2>
         <div class="presets" id="presets">${Object.entries(PRESETS).map(([k, p]) =>
           `<button type="button" data-p="${k}">${p.name}<small>${p.hint}</small></button>`).join("")}</div>
+        <h2 style="margin-top:16px">Eigene Presets</h2>
+        <div class="presets" id="mypresets"></div>
+        <div class="saverow"><input type="text" id="c-pname" maxlength="40" placeholder="Name, z. B. Stream rechts"><button type="button" id="p-save">Speichern</button></div>
+        <p class="hint">Eigene Presets merken sich Aussehen und Ablauf (nicht die Orders). Deine letzte Einstellung – inklusive Orders – wird beim nächsten Öffnen automatisch wiederhergestellt. Beides bleibt in diesem Browser gespeichert.</p>
+        <details class="importbox"><summary>Einstellung aus einem OBS-Link übernehmen</summary>
+          <div class="urlbox" style="margin-top:8px"><input type="text" id="c-import" placeholder="Link einfügen …"><button type="button" id="p-import">Übernehmen</button></div>
+          <p class="hint" id="import-status"></p>
+        </details>
+        <button type="button" class="ghost" id="p-reset" style="margin-top:10px">Auf Standard zurücksetzen</button>
       </div>
       <div class="panel">
         <h2>Quellen</h2>
@@ -1110,7 +1127,86 @@ function startSetup() {
   };
   $("add-op").onclick = () => { addOp(); update(); };
 
-  function markPreset(k) { document.querySelectorAll("#presets button").forEach(b => b.classList.toggle("on", b.dataset.p === k)); }
+  // Gegenstück zu update(): setzt alle Felder aus Link-Parametern (fehlende Werte = Standard)
+  const LOOK_KEYS = ["layout", "pos", "scale", "mx", "my", "margin", "bgalpha", "accent", "accent2", "briefing", "anim", "closed", "rotate", "brief", "briefh", "lang", "pulse"];
+  function applyParams(q, withSources) {
+    const g = (k, d) => q.has(k) ? q.get(k) : d;
+    const layoutV = ["card", "bar", "counter"].includes(q.get("layout")) ? q.get("layout") : "card";
+    $("c-layout").value = layoutV;
+    $("c-pos").value = POS.includes(q.get("pos")) ? q.get("pos") : (layoutV === "bar" ? "bc" : "tl");
+    $("c-scale").value = Math.round(clamp(Number(g("scale", 1)) || 1, 0.6, 1.8) * 100);
+    $("c-mx").value = clamp(Number(g("mx", g("margin", 40))), 0, 400);
+    $("c-my").value = clamp(Number(g("my", g("margin", 40))), 0, 400);
+    $("c-bgalpha").value = q.has("bgalpha") ? clamp(Number(q.get("bgalpha")), 0, 100) : (q.get("bg") === "none" ? 0 : 85);
+    const hex = (k, d) => /^[0-9a-f]{6}$/i.test(q.get(k) || "") ? "#" + q.get(k).toLowerCase() : d;
+    $("c-accent").value = hex("accent", layoutV === "counter" ? "#ffc233" : "#ffe711");
+    $("c-accent2").value = hex("accent2", "#c9a6ff");
+    $("c-briefing").value = ({ "0": "off", off: "off", alt: "alt" })[q.get("briefing")] || "on";
+    $("c-anim").value = q.get("anim") === "fold" ? "fold" : "none";
+    $("c-closed").value = g("closed", 45);
+    $("c-rotate").value = g("rotate", 12);
+    $("c-brief").value = g("brief", 20);
+    $("c-briefh").value = g("briefh", 220);
+    $("c-lang").value = q.get("lang") === "en" ? "en" : "de";
+    $("c-pulse").checked = q.get("pulse") !== "0";
+    if (withSources) {
+      if (q.get("contact")) $("c-contact").value = q.get("contact");
+      $("c-demo").checked = q.get("demo") === "1";
+      if (q.has("config")) { $("c-usefile").checked = true; $("c-file").value = q.get("config"); }
+      const list = (q.get("sources") || "").split(",").map(x => x.trim()).filter(x => SRC_RE.test(x));
+      if (list.length) fillEditor(list);
+    }
+  }
+  const lookOnly = q => { const o = new URLSearchParams(); LOOK_KEYS.forEach(k => { if (q.has(k)) o.set(k, q.get(k)); }); return o; };
+
+  // Eigene Presets (nur in diesem Browser)
+  const MY_KEY = "hd2-mypresets";
+  const readMy = () => { try { return JSON.parse(localStorage.getItem(MY_KEY) || "{}"); } catch (e) { return {}; } };
+  const writeMy = m => { try { localStorage.setItem(MY_KEY, JSON.stringify(m)); } catch (e) {} };
+  function renderMy() {
+    const m = readMy();
+    $("mypresets").innerHTML = Object.keys(m).sort((a, b) => a.localeCompare(b)).map(n =>
+      `<button type="button" class="mp" data-my="${esc(n)}">${esc(n)}<small>${esc(describe(new URLSearchParams(m[n])))}</small><span class="mp-del" role="button" aria-label="${esc(n)} löschen" data-del="${esc(n)}">✕</span></button>`).join("");
+    $("mypresets").querySelectorAll(".mp").forEach(b => b.onclick = ev => {
+      const del = ev.target.closest("[data-del]");
+      if (del) { const mm = readMy(); delete mm[del.dataset.del]; writeMy(mm); renderMy(); return; }
+      applyParams(new URLSearchParams(readMy()[b.dataset.my] || ""), false);
+      update(); markPreset("my:" + b.dataset.my);
+    });
+  }
+  function describe(q) {
+    const lay = { card: "Karte", bar: "Leiste", counter: "Event-Zähler" }[q.get("layout")] || "Karte";
+    const pos = q.get("pos") || "tl";
+    const posTxt = { t: "oben", m: "Mitte", b: "unten" }[pos[0]] + " " + { l: "links", c: "mittig", r: "rechts" }[pos[1]];
+    return `${lay}, ${posTxt}${q.get("anim") === "fold" ? ", klappt ein" : ""}`;
+  }
+  $("p-save").onclick = () => {
+    const name = $("c-pname").value.trim();
+    if (!name) { $("c-pname").focus(); return; }
+    const m = readMy(); m[name] = lookOnly(new URLSearchParams($("out").value.split("?")[1] || "")).toString(); writeMy(m);
+    $("c-pname").value = ""; renderMy(); markPreset("my:" + name);
+  };
+  $("c-pname").addEventListener("keydown", e => { if (e.key === "Enter") $("p-save").click(); });
+  $("p-import").onclick = () => {
+    const raw = $("c-import").value.trim();
+    let q;
+    try { q = new URL(raw, location.href).searchParams; } catch (e) { q = null; }
+    if (!q || ![...q.keys()].length) { $("import-status").textContent = "Das sieht nicht nach einem Overlay-Link aus."; return; }
+    applyParams(q, true); update(); markPreset(null);
+    $("import-status").textContent = "Übernommen ✔";
+    if ($("c-usefile").checked && $("c-repo").value) loadFile();
+  };
+  $("p-reset").onclick = () => {
+    try { localStorage.removeItem("hd2-last"); } catch (e) {}
+    $("c-mo").checked = true; $("ops").innerHTML = ""; addOp(); $("c-demo").checked = false;
+    applyParams(new URLSearchParams(), false); // alle Werte auf Standard, auch Abstände
+    applyPreset("classic");
+  };
+
+  function markPreset(k) {
+    document.querySelectorAll("#presets button").forEach(b => b.classList.toggle("on", b.dataset.p === k));
+    document.querySelectorAll("#mypresets .mp").forEach(b => b.classList.toggle("on", "my:" + b.dataset.my === k));
+  }
   function applyPreset(k) {
     const p = PRESETS[k];
     $("c-layout").value = p.layout; $("c-pos").value = p.pos; $("c-scale").value = p.scale;
@@ -1168,6 +1264,7 @@ function startSetup() {
     const obs = new URLSearchParams(p);
     if ($("c-usefile").checked) { obs.delete("sources"); obs.set("config", $("c-file").value.trim() || "orders.json"); }
     $("out").value = base + "?" + obs.toString();
+    try { localStorage.setItem("hd2-last", obs.toString() + ($("c-usefile").checked ? "&sources=" + encodeURIComponent(src.join(",")) : "")); } catch (e) {}
     $("filebox").hidden = !$("c-usefile").checked;
     $("file-hint").hidden = !($("c-usefile").checked && location.protocol === "file:");
     $("file-hint").textContent = "Hinweis: Du hast den Konfigurator lokal geöffnet. Damit der Link beim Streamer funktioniert, öffne ihn über eure GitHub-Pages-Adresse und kopiere den Link dort.";
@@ -1178,7 +1275,7 @@ function startSetup() {
   function fitPreview() { $("prev").style.transform = `scale(${$("prevbox").clientWidth / 1920})`; }
   new ResizeObserver(fitPreview).observe($("prevbox"));
   document.querySelectorAll(".cfg input, .cfg select").forEach(x => {
-    x.addEventListener("input", () => update(x.closest(".panel") && !["c-mo", "c-demo", "c-checker", "c-contact", "c-lang", "c-pulse", "c-usefile", "c-repo", "c-file", "c-token", "c-remember"].includes(x.id)));
+    x.addEventListener("input", () => update(x.closest(".panel") && !["c-mo", "c-demo", "c-checker", "c-contact", "c-lang", "c-pulse", "c-usefile", "c-repo", "c-file", "c-token", "c-remember", "c-pname", "c-import"].includes(x.id)));
   });
   $("copy").onclick = async () => {
     try { await navigator.clipboard.writeText($("out").value); } catch (e) { $("out").select(); document.execCommand("copy"); }
@@ -1280,8 +1377,11 @@ function startSetup() {
 
   try { const c = localStorage.getItem("hd2-contact"); if (c) $("c-contact").value = c; } catch (e) {}
   $("c-contact").addEventListener("change", () => { try { localStorage.setItem("hd2-contact", $("c-contact").value.trim()); } catch (e) {} });
+  let lastSaved = null;
+  try { lastSaved = localStorage.getItem("hd2-last"); } catch (e) {}
   addOp();
-  applyPreset("classic");
+  if (lastSaved) { applyParams(new URLSearchParams(lastSaved), true); update(); } else applyPreset("classic");
+  renderMy();
   fitPreview();
   let fileCfg = {};
   try { fileCfg = JSON.parse(localStorage.getItem("hd2-file") || "{}"); const t = localStorage.getItem("hd2-ghtoken"); if (t) { $("c-token").value = t; $("c-remember").checked = true; } } catch (e) {}
