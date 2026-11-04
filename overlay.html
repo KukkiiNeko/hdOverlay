@@ -259,6 +259,34 @@
   body.layout-counter.align-l .mrow-top, body.layout-counter.align-l .mini-row { align-items: flex-start; }
   body.layout-counter.align-r .mrow-top, body.layout-counter.align-r .mini-row { align-items: flex-end; }
 
+  /* ---------------- Nachrichtenticker ----------------
+     Volle Breite am Bildrand: Kennung links, dahinter laufen die Statistiken (und bei einer einzelnen
+     Order das Briefing) als Endlos-Laufschrift. Passt alles in die Breite, steht es still. */
+  body.layout-ticker #stage { left: var(--tkx, 0px); right: var(--tkx, 0px); display: block; }
+  .tk { display: flex; align-items: stretch; height: 58px; width: 100%; box-shadow: 0 6px 22px rgba(0,0,0,calc(var(--bg-a) * .5)); }
+  .tk-label { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 0 18px; background: var(--accent); color: var(--on-accent);
+    font: 700 19px/1 "Chakra Petch", sans-serif; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+  .tk-label .tk-time { background: var(--on-accent); color: var(--accent); font-size: 17px; padding: 5px 8px; border-radius: 2px; letter-spacing: .04em; text-transform: none; }
+  .tk-label .tk-time:empty { display: none; }
+  .tk-tape { flex: 0 0 9px; background: repeating-linear-gradient(-45deg, var(--accent) 0 8px, #111 8px 16px); }
+  .tk-win { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: center; background: var(--bg);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+            mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); }
+  .tk-track { display: flex; white-space: nowrap; will-change: transform; padding-left: 28px; }
+  .tk-copy { display: flex; align-items: center; flex: 0 0 auto; }
+  .tk-order { display: inline-flex; align-items: center; gap: 0; }
+  .tk-title { font: 700 21px/1 "Chakra Petch", sans-serif; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); margin-right: 16px; }
+  .tk-stat { font-size: 18px; font-weight: 600; color: #d6dbe0; }
+  .tk-stat b { font: 700 21px/1 "Chakra Petch", sans-serif; color: var(--fg); margin-left: 7px; font-variant-numeric: tabular-nums; }
+  .tk-stat.done b::after { content: " ✔"; color: var(--ok); }
+  .tk-sep { color: var(--accent); margin: 0 16px; font-size: 13px; opacity: .85; }
+  .tk-big { margin: 0 34px; width: 10px; height: 10px; background: var(--accent); transform: rotate(45deg); flex: 0 0 10px; }
+  .tk-brief { font-size: 19px; font-weight: 500; color: #eef1f4; }
+  .tk-brief i { font: 700 15px/1 "Chakra Petch", sans-serif; font-style: normal; letter-spacing: .14em; color: var(--on-accent);
+    background: var(--accent); padding: 4px 7px; border-radius: 2px; margin-right: 12px; }
+  .tk-err { color: #ff9e94; font-size: 16px; margin-left: 14px; }
+  body.thin .tk-win { text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,.9); }
+
   /* ---------------- Konfigurator ---------------- */
   .cfg { max-width: 1240px; margin: 0 auto; padding: 24px 16px 60px; display: grid;
     grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -295,6 +323,13 @@
   .posgrid button:hover i { background: var(--fg); }
   .posgrid button[aria-checked="true"] { border: 1px solid var(--accent); }
   .posgrid button[aria-checked="true"] i { background: var(--accent); }
+  .prow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; margin-bottom: 6px; }
+  .prow select, .prow input { padding: 7px; background: #0f1214; border: 1px solid #2b3137; color: var(--fg); border-radius: 4px; font: inherit; font-size: 13px; min-width: 0; }
+  .prow input[hidden] { display: block !important; visibility: hidden; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #2b3137; border-radius: 4px; overflow: hidden; }
+  .seg button { background: #0f1214; color: var(--muted); border: 0; border-radius: 0; padding: 9px 8px; }
+  .seg button + button { border-left: 1px solid #2b3137; }
+  .seg button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
   .saverow { display: flex; gap: 6px; margin-top: 8px; }
   .saverow input { flex: 1; min-width: 0; padding: 8px; background: #0f1214; border: 1px solid #2b3137; color: var(--fg); border-radius: 4px; font: inherit; font-size: 13px; }
   #mypresets:empty { display: none; }
@@ -328,13 +363,14 @@
 
 const P = new URLSearchParams(location.search);
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
-const layout = ["bar", "counter"].includes(P.get("layout")) ? P.get("layout") : "card";
+const layout = ["bar", "counter", "ticker"].includes(P.get("layout")) ? P.get("layout") : "card";
 const POS = ["tl", "tc", "tr", "ml", "mc", "mr", "bl", "bc", "br"]; // oben/Mitte/unten × links/Mitte/rechts
 const CFG = {
   sources: (P.get("sources") || "").split(",").map(s => s.trim()).filter(Boolean),
   // Optional: Orders aus einer Datei (z. B. orders.json neben dem Overlay auf GitHub Pages).
   // Die Datei wird bei jeder Aktualisierung neu gelesen – Änderungen erscheinen ohne neuen OBS-Link.
   configUrl: P.get("config") || "",
+  card: P.get("card") === "planet" ? "planet" : "orders", // eigene Planeten-Karte (eigener OBS-Link)
   lang: P.get("lang") === "en" ? "en" : "de",
   rotate: Math.max(5, Number(P.get("rotate")) || 12),
   refresh: Math.max(60, Number(P.get("refresh")) || 60),
@@ -350,7 +386,7 @@ const CFG = {
   accent2: /^[0-9a-f]{6}$/i.test(P.get("accent2") || "") ? "#" + P.get("accent2") : "#c9a6ff",
   bgAlpha: P.has("bgalpha") ? clamp(Number(P.get("bgalpha")), 0, 100) / 100 : (P.get("bg") === "none" ? 0 : 0.85),
   briefing: ({ "0": "off", off: "off", alt: "alt" })[P.get("briefing")] || "on",
-  anim: P.get("anim") === "fold" ? "fold" : "none",
+  anim: ["fold", "mini"].includes(P.get("anim")) ? P.get("anim") : "none", // mini = dauerhaft eingeklappt
   closed: clamp(Number(P.get("closed")) || 45, 10, 1800),
   brief: clamp(Number(P.get("brief")) || 20, 5, 300),     // Anzeigedauer des Briefings (Karte), Sekunden
   briefh: clamp(Number(P.get("briefh")) || 220, 80, 800), // Maximalhöhe des Briefings (Karte), px
@@ -366,7 +402,9 @@ const I18N = {
     missions: "Missionen abschließen", any: "Gegner", defenses: "Verteidigungen",
     liberated: "befreit", ended: "Beendet", signed: "Helldiver", clans: "Clans", reports: "Reports",
     players: "Spieler online", noOrders: "Aktuell keine aktive Major Order", loading: "Lade Daten …",
-    stale: "Daten veraltet", noConn: "Keine Verbindung", pending: "Startet bald", orders: "Aktive Orders", sop: "Strategic Opportunity", minor: "Minor Order", remaining: "Restzeit", status: "Status", running: "Läuft", notTop: "Euer Clan nicht in den Top 5", briefing: "BRIEFING", d: "T", h: "Std", m: "Min",
+    stale: "Daten veraltet", noConn: "Keine Verbindung", pending: "Startet bald", orders: "Aktive Orders", planet: "Planet", pLib: "Befreiung", pDefense: "Verteidigung", pHeld: "Gesichert",
+    pPlayers: "Helldiver hier", pRate: "Tempo", pRateWait: "Tempo wird ermittelt", pEta: "bis befreit", pEtaDef: "bis verteidigt", pTooSlow: "zu langsam",
+    pRegen: "Regeneration", pSuccess: "Erfolgsquote", noPlanet: "Kein aktiver Planet gefunden", sop: "Strategic Opportunity", minor: "Minor Order", remaining: "Restzeit", status: "Status", running: "Läuft", notTop: "Euer Clan nicht in den Top 5", briefing: "BRIEFING", d: "T", h: "Std", m: "Min",
   },
   en: {
     mo: "Major Order", ao: "Alliance Order", co: "Clan Order", so: "Server Order", order: "Order",
@@ -375,7 +413,9 @@ const I18N = {
     missions: "Complete missions", any: "enemies", defenses: "defenses",
     liberated: "liberated", ended: "Ended", signed: "Helldivers", clans: "Clans", reports: "Reports",
     players: "players online", noOrders: "No active Major Order right now", loading: "Loading …",
-    stale: "Data stale", noConn: "No connection", pending: "Starting soon", orders: "Active orders", sop: "Strategic Opportunity", minor: "Minor Order", remaining: "Time left", status: "Status", running: "Running", notTop: "Your clan is not in the top 5", briefing: "BRIEFING", d: "d", h: "h", m: "m",
+    stale: "Data stale", noConn: "No connection", pending: "Starting soon", orders: "Active orders", planet: "Planet", pLib: "Liberation", pDefense: "Defense", pHeld: "Secured",
+    pPlayers: "Helldivers here", pRate: "Rate", pRateWait: "Measuring rate", pEta: "to liberation", pEtaDef: "to defended", pTooSlow: "too slow",
+    pRegen: "Regeneration", pSuccess: "Success rate", noPlanet: "No active planet found", sop: "Strategic Opportunity", minor: "Minor Order", remaining: "Time left", status: "Status", running: "Running", notTop: "Your clan is not in the top 5", briefing: "BRIEFING", d: "d", h: "h", m: "m",
   },
 };
 const T = I18N[CFG.lang];
@@ -545,10 +585,105 @@ function opToOrder(op, code, clan) {
   };
 }
 
+/* ------------------------------ Planet ------------------------------- */
+const FACTIONS = { de: { Terminids: "Terminiden", Automaton: "Automatons", Illuminate: "Illuminaten", Humans: "Super Earth" },
+                   en: { Terminids: "Terminids", Automaton: "Automatons", Illuminate: "Illuminate", Humans: "Super Earth" } }[CFG.lang];
+let planetPick = null; // Auto-Modus: zuletzt gewählter Planet – wechselt erst, wenn ein anderer deutlich mehr Spieler hat
+
+async function loadPlanet(spec) {
+  // spec: Planeten-Nummer | "auto" (meiste Helldiver) | "topN" (N Planeten mit den meisten) | "mo" (alle offenen MO-Ziele)
+  if (/^\d+$/.test(spec)) return [planetToOrder(await hdApi("/api/v1/planets/" + spec))];
+  const list = await hdApi("/api/v1/planets");
+  const players = x => (x.statistics && x.statistics.playerCount) || 0;
+  const byPlayers = arr => arr.slice().sort((a, b) => players(b) - players(a));
+  if (spec === "mo") {
+    let idx = [];
+    try {
+      (await hdApi("/api/v1/assignments")).forEach(a => (a.tasks || []).forEach((t, i) => {
+        const k = (t.valueTypes || []).indexOf(12);
+        if (k >= 0 && t.values[k] && !(Number((a.progress || [])[i]) >= 1)) idx.push(t.values[k]);
+      }));
+    } catch (e) {}
+    const mo = byPlayers(list.filter(x => idx.includes(x.index)));
+    if (mo.length) return mo.slice(0, 6).map(x => planetToOrder(x));
+    spec = "auto"; // keine offenen MO-Ziele: wie „automatisch"
+  }
+  const active = byPlayers(list.filter(x => players(x) > 0));
+  if (!active.length) throw new Error(T.noPlanet);
+  const top = /^top(\d)$/.exec(spec);
+  if (top) return active.slice(0, Number(top[1])).map(x => planetToOrder(x));
+  const best = active[0], cur = active.find(x => x.index === planetPick);
+  const p = cur && players(best) < players(cur) * 1.15 ? cur : best; // nicht bei knappem Vorsprung hin- und herspringen
+  planetPick = p.index;
+  return [planetToOrder(p)];
+}
+
+// Tempo aus eigenen Messungen: Fortschritt jetzt gegen einen Messwert vor mindestens 10 Minuten
+function trackRate(index, mode, pct) {
+  const key = "hd2-ph:" + index, now = Date.now();
+  let h = [];
+  try { h = JSON.parse(localStorage.getItem(key) || "[]"); } catch (e) {}
+  h = h.filter(x => x[2] === mode && now - x[0] < 3 * 3600e3);
+  if (!h.length || now - h[h.length - 1][0] > 50000) h.push([now, pct, mode]);
+  try { localStorage.setItem(key, JSON.stringify(h.slice(-200))); } catch (e) {}
+  const old = h.filter(x => now - x[0] >= 10 * 60e3 && now - x[0] <= 75 * 60e3)[0] || h.filter(x => now - x[0] >= 10 * 60e3).pop();
+  return old ? (pct - old[1]) / ((now - old[0]) / 3600e3) : null;
+}
+function hoursTxt(hrs) {
+  const m = Math.round(hrs * 60);
+  if (m < 60) return `~${m}${T.m}`;
+  const d = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60);
+  return d ? `~${d}${T.d} ${hh}${T.h}` : `~${hh}${T.h} ${m % 60}${T.m}`;
+}
+function planetToOrder(p, demoRate) {
+  const ev = p.event && p.event.maxHealth ? p.event : null;
+  const mode = ev ? "def" : p.currentOwner === "Humans" ? "held" : "lib";
+  const pct = mode === "def" ? clamp((1 - ev.health / ev.maxHealth) * 100, 0, 100)
+            : mode === "held" ? 100 : clamp((1 - p.health / p.maxHealth) * 100, 0, 100);
+  const enemy = ev ? ev.faction : p.currentOwner;
+  const rate = demoRate != null ? demoRate : mode === "held" ? null : trackRate(p.index, mode, pct);
+  const st = p.statistics || {};
+  const foot = [[fmt(st.playerCount), T.pPlayers]];
+  if (mode !== "held") {
+    const sign = rate > 0 ? "+" : rate < 0 ? "−" : "±";
+    foot.push(rate == null ? ["…", T.pRateWait] : [`${sign}${PCT.format(Math.abs(rate))} %/h`, T.pRate]);
+    if (rate > 0.05) {
+      const hrs = (100 - pct) / rate;
+      const late = ev && ev.endTime && Date.now() + hrs * 3600e3 > new Date(ev.endTime);
+      foot.push([late ? T.pTooSlow : hoursTxt(hrs), mode === "def" ? T.pEtaDef : T.pEta]);
+    }
+  }
+  if (mode === "lib" && p.regenPerSecond && p.maxHealth) foot.push([`−${PCT.format(p.regenPerSecond * 3600 / p.maxHealth * 100)} %/h`, T.pRegen]);
+  if (st.missionSuccessRate != null) foot.push([`${st.missionSuccessRate} %`, T.pSuccess]);
+  return {
+    kind: "planet",
+    pidx: p.index,
+    badge: `${T.planet} · ${FACTIONS[enemy] || enemy || ""}${p.sector ? " · " + p.sector : ""}`,
+    title: p.name,
+    subtitle: "",
+    endsAt: ev && ev.endTime ? new Date(ev.endTime) : null,
+    rows: [{ label: mode === "def" ? T.pDefense : mode === "held" ? T.pHeld : T.pLib, value: pctFmt(pct), pct, done: mode === "held" }],
+    foot,
+  };
+}
+
 /* ------------------------------- Demo -------------------------------- */
 const demoStart = Date.now();
 function demoData(src) {
   const grow = (n, rate) => Math.round(n + (Date.now() - demoStart) / 1000 * rate);
+  if (src.startsWith("planet:")) {
+    const demoP = [
+      planetToOrder({ index: 170, name: "Fori Prime", sector: "Draco", currentOwner: "Terminids", maxHealth: 1000000,
+        health: Math.max(0, 230000 - (Date.now() - demoStart) / 1000 * 5), regenPerSecond: 12.5, statistics: { playerCount: grow(23691, .3), missionSuccessRate: 91 } }, 1.8),
+      planetToOrder({ index: 129, name: "Acamar IV", sector: "Sten", currentOwner: "Humans", maxHealth: 1500000, health: 1500000,
+        event: { faction: "Automaton", health: 1555838, maxHealth: 2250000, endTime: new Date(demoStart + 28 * 36e5).toISOString() },
+        statistics: { playerCount: 2940, missionSuccessRate: 88 } }, 4.2),
+      planetToOrder({ index: 78, name: "Crimsica", sector: "Severin", currentOwner: "Terminids", maxHealth: 1500000, health: 1180000,
+        regenPerSecond: 9.7, statistics: { playerCount: 1058, missionSuccessRate: 93 } }, -0.6),
+    ];
+    const spec = src.slice(7), top = /^top(\d)$/.exec(spec);
+    return spec === "mo" ? demoP.slice(0, 2) : top ? demoP.slice(0, Number(top[1])) : /^\d+$/.test(spec) ? [demoP.find(x => x.pidx === Number(spec)) || demoP[2]] : [demoP[0]];
+  }
   if (src === "mo") return [{
     badge: T.mo, title: "Operation Iron Harvest",
     subtitle: "Die Automatons haben eine Fabrikwelt reaktiviert. Super Earth befiehlt die vollständige Vernichtung ihrer Produktionskapazitäten, bevor der nächste Konvoi die Front erreicht. Jeder Helldiver wird gebraucht.",
@@ -580,6 +715,7 @@ async function refreshSource(src) {
     if (CFG.demo) orders = demoData(src);
     else if (src === "mo") orders = await loadMajorOrders();
     else if (src.startsWith("op:")) { const [, code, clan] = src.split(":"); orders = await loadOperation(code, clan); }
+    else if (src.startsWith("planet:")) orders = await loadPlanet(src.slice(7));
     else throw new Error("Unbekannte Quelle: " + src);
     state.bySource[src] = orders;
     delete state.errors[src];
@@ -589,7 +725,8 @@ async function refreshSource(src) {
   }
 }
 // Orders-Datei lesen: {"sources": ["mo", "op:C2382:25"]}. Bei Fehlern bleiben die bisherigen Quellen.
-const SRC_RE = /^(mo|op:[A-Za-z]\d+(:\d+)?)$/;
+const SRC_RE = /^(mo|op:[A-Za-z]\d+(:\d+)?|planet:(auto|mo|top[2-5]|\d+))$/;
+const PSPEC_RE = /^(auto|mo|top[2-5]|\d+)$/;
 async function loadRemoteConfig() {
   if (!CFG.configUrl) return;
   try {
@@ -598,7 +735,11 @@ async function loadRemoteConfig() {
     const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) throw new Error(`Orders-Datei ${r.status}`);
     const j = await r.json();
-    const list = (Array.isArray(j.sources) ? j.sources : []).map(x => String(x).trim()).filter(x => SRC_RE.test(x));
+    // Planeten-Karte liest "planets" (Liste) bzw. das ältere "planet" (einzeln)
+    const specs = (Array.isArray(j.planets) ? j.planets : j.planet != null ? [j.planet] : []).map(String).filter(x => PSPEC_RE.test(x));
+    const list = CFG.card === "planet"
+      ? (specs.length ? specs : ["auto"]).map(x => "planet:" + x)
+      : (Array.isArray(j.sources) ? j.sources : []).map(x => String(x).trim()).filter(x => SRC_RE.test(x) && !x.startsWith("planet:"));
     if (!list.length) throw new Error("Orders-Datei enthält keine gültigen Quellen");
     if (list.join(",") !== CFG.sources.join(",")) {
       for (const k of Object.keys(state.bySource)) if (!list.includes(k)) { delete state.bySource[k]; delete state.errors[k]; }
@@ -607,7 +748,7 @@ async function loadRemoteConfig() {
     delete state.errors.__config;
   } catch (e) {
     console.warn("[overlay] Orders-Datei:", e);
-    if (!CFG.sources.length) CFG.sources = ["mo"]; // Notfall: wenigstens die Major Order zeigen
+    if (!CFG.sources.length) CFG.sources = [CFG.card === "planet" ? "planet:auto" : "mo"]; // Notfall
   }
 }
 
@@ -619,12 +760,15 @@ async function refreshAll() {
 
 // Alle anzeigbaren Orders (eine Quelle kann mehrere Major Orders liefern)
 function slides() {
-  const out = [];
+  const out = [], seenPlanets = new Set();
   for (const src of CFG.sources) {
     const orders = state.bySource[src], err = state.errors[src];
-    if (orders) orders.forEach((o, idx) => out.push({ src, idx, o, err: err ? `${T.stale} (${err})` : null }));
+    if (orders) orders.forEach((o, idx) => {
+      if (o.pidx != null) { if (seenPlanets.has(o.pidx)) return; seenPlanets.add(o.pidx); }
+      out.push({ src, idx, o, err: err ? `${T.stale} (${err})` : null });
+    });
     else if (err) out.push({ src, idx: 0, err: `${T.noConn}: ${err}`,
-      o: { badge: src.startsWith("op:") ? T.order : T.mo, title: src.startsWith("op:") ? src.split(":")[1] : T.mo, rows: [], foot: [] } });
+      o: { badge: src.startsWith("op:") ? T.order : src.startsWith("planet:") ? T.planet : T.mo, title: src.startsWith("op:") ? src.split(":")[1] : src.startsWith("planet:") ? T.planet : T.mo, rows: [], foot: [] } });
   }
   return out;
 }
@@ -726,7 +870,7 @@ function counterHTML(o, kb, err) {
     ${o.title ? `<div class="c-title">${esc(o.title)}</div>` : ""}
     ${o.subtitle && CFG.briefing === "on" ? `<div class="subtitle">${esc(o.subtitle)}</div>` : ""}
     ${stats.length ? `<div class="c-stats">${stats.slice(0, 6).map(st => `<div class="c-stat"><div class="c-num" data-vk="${st.k}">${esc(st.v)}</div><div class="c-lbl">${esc(st.l)}</div></div>`).join("")}</div>` : ""}
-    <div class="c-status"><div class="c-status-v" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</div><div class="c-lbl">${o.endsAt && !o.status ? T.remaining : T.status}</div></div>
+    ${o.kind === "planet" && !o.endsAt && !o.status ? "" : `<div class="c-status"><div class="c-status-v" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</div><div class="c-lbl">${o.endsAt && !o.status ? T.remaining : T.status}</div></div>`}
     ${err}`;
 }
 
@@ -883,6 +1027,7 @@ async function showView(v) {
 
 // Neue Daten in die sichtbare Ansicht übernehmen (Balken wachsen dank fillMem nur weiter)
 function patchCurrent() {
+  if (layout === "ticker") { tickerUpdate(); return; }
   if (!current || !el.full) return;
   if (current.phase === "mini") { renderMiniAll(); return; }
   const o = fresh(current);
@@ -932,6 +1077,15 @@ async function runLoop() {
   const t0 = Date.now();
   while (CFG.sources.some(x => !state.bySource[x] && !state.errors[x]) && Date.now() - t0 < 15000) await sleep(300);
   while (!slides().length) await sleep(500);
+  if (CFG.anim === "mini") { // dauerhaft eingeklappt: nur die kompakte Ansicht, neue Daten kommen über patchCurrent
+    current = { phase: "mini" };
+    renderMiniAll();
+    if (layout === "card") {
+      el.card.hidden = true; el.rail.hidden = false;
+      el.mini.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, easing: "ease-out" });
+    } else el.card.classList.add("collapsed");
+    return;
+  }
   for (;;) {
     const vs = views();
     if (CFG.anim === "fold") {
@@ -967,6 +1121,86 @@ function placeStage() {
   st.transformOrigin = `${v === "t" ? "top" : v === "b" ? "bottom" : "center"} ${h === "l" ? "left" : h === "r" ? "right" : "center"}`;
 }
 
+/* ------------------------- Nachrichtenticker ------------------------ */
+const TK_SPEED = 95; // px pro Sekunde – ruhig genug zum Mitlesen
+let tk = null;
+function tickerContentHTML() {
+  const all = slides(), multi = all.length > 1;
+  const withBrief = !multi && CFG.briefing !== "off";
+  const sep = '<span class="tk-sep">◆</span>';
+  return all.map(sl => {
+    const o = sl.o, kb = `${sl.src}|${sl.idx}`, parts = [];
+    (o.rows || []).forEach((r, i) => {
+      const extra = r.pct != null && String(r.value).includes("/") ? ` (${pctFmt(r.pct)})` : "";
+      parts.push(`<span class="tk-stat${r.done ? " done" : ""}">${esc(r.label)}<b data-vk="${kb}|t${i}">${esc(r.value + extra)}</b></span>`);
+    });
+    (o.foot || []).forEach(([v, l]) => { if (l) parts.push(`<span class="tk-stat">${esc(l)}<b>${String(v).replace(/<[^>]*>/g, "")}</b></span>`); });
+    const time = o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : "");
+    if (time && multi) parts.push(`<span class="tk-stat">${esc(T.remaining)}<b class="mrow-time" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</b></span>`);
+    if (withBrief && o.subtitle) parts.push(`<span class="tk-brief"><i>${T.briefing}</i>${esc(o.subtitle)}</span>`);
+    const title = multi ? nameOf(o) : o.title;
+    return `<span class="tk-order">${title ? `<span class="tk-title">${esc(title)}</span>` : ""}${parts.join(sep)}${sl.err ? `<span class="tk-err">${esc(sl.err)}</span>` : ""}</span>`;
+  }).join('<span class="tk-big"></span>');
+}
+function tickerHead() {
+  const all = slides();
+  if (all.length === 1) {
+    const o = all[0].o;
+    tk.label.firstChild.textContent = o.badge;
+    tk.time.dataset.ends = o.status || !o.endsAt ? "" : +o.endsAt;
+    tk.time.textContent = o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : "");
+  } else {
+    tk.label.firstChild.textContent = CFG.card === "planet" ? (CFG.lang === "de" ? "Planeten" : "Planets") : T.orders;
+    tk.time.dataset.ends = ""; tk.time.textContent = "";
+  }
+}
+// Inhalt aufbauen; läuft er über, wird er verdoppelt und läuft nahtlos im Kreis.
+// Neue Daten werden am Ende jedes Durchlaufs übernommen, damit nichts springt.
+function tickerRender() {
+  tickerHead();
+  const html = tickerContentHTML();
+  tk.pending = null;
+  tk.html = html;
+  tk.track.getAnimations().forEach(a => a.cancel());
+  tk.track.innerHTML = `<div class="tk-copy">${html}</div>`;
+  growFills(tk.track);
+  const copy = tk.track.firstChild;
+  const avail = tk.win.clientWidth - 56;
+  if (copy.scrollWidth <= avail) { tk.moving = false; return; } // passt: steht still
+  tk.moving = true;
+  const gap = '<span class="tk-big"></span>';
+  copy.insertAdjacentHTML("beforeend", gap);
+  const w = copy.getBoundingClientRect().width;
+  tk.track.insertAdjacentHTML("beforeend", `<div class="tk-copy" aria-hidden="true">${html}${gap}</div>`);
+  const anim = tk.track.animate([{ transform: "translateX(0)" }, { transform: `translateX(${-w}px)` }],
+    { duration: w / TK_SPEED * 1000, easing: "linear" });
+  anim.onfinish = () => tickerRender(); // ein Durchlauf fertig: mit aktuellen Daten weiter
+}
+function tickerUpdate() {
+  if (!tk) return;
+  const html = tickerContentHTML();
+  if (html === tk.html) { tickerHead(); return; }
+  if (!tk.moving) tickerRender(); // steht still: sofort aktualisieren (wenn es jetzt überläuft, beginnt die Laufschrift)
+}
+function startTickerLayout() {
+  document.getElementById("stage").innerHTML = `
+    <div class="tk"><div class="tk-label"><span>HD2</span><span class="tk-time"></span></div><div class="tk-tape"></div>
+    <div class="tk-win"><div class="tk-track"><div class="tk-copy"><span class="tk-stat">${T.loading}</span></div></div></div></div>`;
+  const st = document.getElementById("stage");
+  tk = { label: st.querySelector(".tk-label"), time: st.querySelector(".tk-time"), win: st.querySelector(".tk-win"), track: st.querySelector(".tk-track") };
+  el.timer = tk.time; // Restzeit im Kopf zählt über tickTimer mit
+  const v = CFG.pos[0], s = st.style;
+  s.setProperty("--tkx", CFG.mx + "px");
+  if (v === "t") s.top = CFG.my + "px"; else if (v === "b") s.bottom = CFG.my + "px"; else { s.top = "50%"; s.transform = "translateY(-50%)"; }
+  if (CFG.scale !== 1) { s.zoom = CFG.scale; }
+  const t0 = Date.now();
+  (async () => {
+    while (CFG.sources.some(x => !state.bySource[x] && !state.errors[x]) && Date.now() - t0 < 15000) await sleep(300);
+    tickerRender();
+  })();
+  window.addEventListener("resize", () => { if (!tk.moving) tickerRender(); });
+}
+
 function startOverlay() {
   document.documentElement.classList.add("overlay-mode");
   const root = document.documentElement.style;
@@ -977,6 +1211,16 @@ function startOverlay() {
   root.setProperty("--briefh", CFG.briefh + "px");
   document.body.classList.add("layout-" + layout, "align-" + CFG.pos[1]);
   if (CFG.bgAlpha < 0.6) document.body.classList.add("thin");
+  if (layout === "ticker") {
+    startTickerLayout();
+    refreshAll();
+    setInterval(refreshAll, (CFG.demo ? 6 : CFG.refresh) * 1000);
+    setInterval(() => document.querySelectorAll(".mrow-time[data-ends], .tk-time[data-ends]").forEach(t => {
+      if (t.dataset.ends) t.textContent = countdown(new Date(+t.dataset.ends));
+    }), 15000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshAll(); });
+    return;
+  }
   buildCard();
   placeStage();
   el.full.innerHTML = `<div class="title">${T.loading}</div>`;
@@ -1005,6 +1249,10 @@ const PRESETS = {
     layout: "counter", pos: "tc", scale: 100, bgalpha: 35, briefing: "off", anim: "none", accent: "#ffc233", accent2: "#c9a6ff" },
   counterfold: { name: "Event-Zähler kompakt", hint: "Zählt hoch, klappt auf Hauptzahlen ein",
     layout: "counter", pos: "bc", scale: 85, bgalpha: 35, briefing: "off", anim: "fold", closed: 60, accent: "#ffc233", accent2: "#c9a6ff" },
+  slim: { name: "Kompakt-Balken", hint: "Dauerhaft eingeklappt, Mitte rechts",
+    layout: "card", pos: "mr", scale: 100, bgalpha: 80, briefing: "off", anim: "mini" },
+  newsticker: { name: "Nachrichtenticker", hint: "Laufschrift am unteren Bildrand",
+    layout: "ticker", pos: "bc", scale: 100, bgalpha: 85, briefing: "on", anim: "none" },
   counterside: { name: "Event-Zähler Seite", hint: "Rechts oben, klappt auf eine Spalte ein",
     layout: "counter", pos: "tr", scale: 80, bgalpha: 35, briefing: "off", anim: "fold", closed: 60, accent: "#ffc233", accent2: "#c9a6ff" },
 };
@@ -1031,15 +1279,32 @@ function startSetup() {
         <button type="button" class="ghost" id="p-reset" style="margin-top:10px">Auf Standard zurücksetzen</button>
       </div>
       <div class="panel">
-        <h2>Quellen</h2>
-        <label class="check"><input type="checkbox" id="c-mo" checked> Major Order(s) aus dem Spiel</label>
-        <div class="field">
-          <label>Melchior-Orders (Code wie C2382, A001)</label>
-          <div id="ops"></div>
-          <button class="ghost" id="add-op" type="button">+ Order hinzufügen</button>
+        <h2>Karte</h2>
+        <input type="hidden" id="c-card" value="orders">
+        <div class="seg" id="cardseg" role="tablist">
+          <button type="button" role="tab" data-card="orders">Order-Karte</button>
+          <button type="button" role="tab" data-card="planet">Planeten-Karte</button>
         </div>
-        <p class="hint">Clan-ID: Zahl aus eurer Clan-URL (hd2clans.com/clan/<b>25</b>-…). Liegt euer Clan in den Top 5, wird der Platz angezeigt.</p>
-        <label class="check"><input type="checkbox" id="c-usefile"> Orders in Datei speichern (für dich und den Streamer bearbeitbar)</label>
+        <p class="hint" id="card-hint"></p>
+        <h2 style="margin-top:14px">Quellen</h2>
+        <div id="src-orders">
+          <label class="check"><input type="checkbox" id="c-mo" checked> Major Order(s) aus dem Spiel</label>
+          <div class="field">
+            <label>Melchior-Orders (Code wie C2382, A001)</label>
+            <div id="ops"></div>
+            <button class="ghost" id="add-op" type="button">+ Order hinzufügen</button>
+          </div>
+          <p class="hint">Clan-ID: Zahl aus eurer Clan-URL (hd2clans.com/clan/<b>25</b>-…). Liegt euer Clan in den Top 5, wird der Platz angezeigt.</p>
+        </div>
+        <div id="src-planet" hidden>
+          <div class="field"><label>Planeten (mehrere möglich)</label>
+            <div id="planets"></div>
+            <button class="ghost" id="add-planet" type="button">+ Planet hinzufügen</button>
+            <datalist id="planet-list"></datalist>
+            <p class="hint" id="planet-status"></p></div>
+          <p class="hint">„Major-Order-Ziele" zeigt alle noch offenen Zielplaneten. Mehrere Planeten wechseln sich in Karte, Leiste und Event-Zähler ab; im Nachrichtenticker stehen sie hintereinander. Die API weiß nicht, wo ihr gerade spielt. „Automatisch" folgt dem Planeten mit den meisten Spielern und wechselt erst, wenn ein anderer deutlich mehr hat. Das Tempo (%/h) berechnet das Overlay aus eigenen Messungen – es erscheint etwa 10 Minuten nach dem Start.</p>
+        </div>
+        <label class="check"><input type="checkbox" id="c-usefile"> <span id="usefile-label">Orders in Datei speichern (für dich und den Streamer bearbeitbar)</span></label>
         <div id="filebox" class="filebox" hidden>
           <p class="hint" style="margin-top:0">Die Liste oben ist der Editor. „Speichern" schreibt sie in die Datei im GitHub-Repository; das Overlay beim Streamer liest sie von dort. Der OBS-Link bleibt dabei immer gleich.</p>
           <div class="two">
@@ -1058,7 +1323,7 @@ function startSetup() {
         <h2>Aussehen</h2>
         <div class="two">
           <div class="field"><label>Layout</label>
-            <select id="c-layout"><option value="card">Karte</option><option value="bar">Leiste</option><option value="counter">Event-Zähler</option></select></div>
+            <select id="c-layout"><option value="card">Karte</option><option value="bar">Leiste</option><option value="counter">Event-Zähler</option><option value="ticker">Nachrichtenticker</option></select></div>
           <div class="field"><label>Position</label>
             <input type="hidden" id="c-pos" value="tl">
             <div class="posgrid" id="posgrid" role="radiogroup" aria-label="Position">${POS.map(k => {
@@ -1085,7 +1350,7 @@ function startSetup() {
           <select id="c-briefing"><option value="off">Ausblenden</option><option value="on">Immer (gekürzt)</option><option value="alt">Im Wechsel mit der Statistik</option></select>
           <p class="hint">Karte: Längere Texte scrollen innerhalb der Briefing-Dauer durch. Leiste: Das Briefing läuft als Lauftext einmal komplett durch.</p></div>
         <div class="field"><label>Animation</label>
-          <select id="c-anim"><option value="none">Immer ausgeklappt</option><option value="fold">Aufklappen, durchlaufen, einklappen</option></select></div>
+          <select id="c-anim"><option value="none">Immer ausgeklappt</option><option value="fold">Aufklappen, durchlaufen, einklappen</option><option value="mini">Immer eingeklappt</option></select></div>
         <label class="check"><input type="checkbox" id="c-pulse" checked> Geänderte Werte kurz aufleuchten lassen</label>
         <div class="two">
           <div class="field"><label>Anzeige je Seite (s)</label><input type="number" id="c-rotate" value="12" min="5"></div>
@@ -1131,7 +1396,7 @@ function startSetup() {
   const LOOK_KEYS = ["layout", "pos", "scale", "mx", "my", "margin", "bgalpha", "accent", "accent2", "briefing", "anim", "closed", "rotate", "brief", "briefh", "lang", "pulse"];
   function applyParams(q, withSources) {
     const g = (k, d) => q.has(k) ? q.get(k) : d;
-    const layoutV = ["card", "bar", "counter"].includes(q.get("layout")) ? q.get("layout") : "card";
+    const layoutV = ["card", "bar", "counter", "ticker"].includes(q.get("layout")) ? q.get("layout") : "card";
     $("c-layout").value = layoutV;
     $("c-pos").value = POS.includes(q.get("pos")) ? q.get("pos") : (layoutV === "bar" ? "bc" : "tl");
     $("c-scale").value = Math.round(clamp(Number(g("scale", 1)) || 1, 0.6, 1.8) * 100);
@@ -1142,7 +1407,7 @@ function startSetup() {
     $("c-accent").value = hex("accent", layoutV === "counter" ? "#ffc233" : "#ffe711");
     $("c-accent2").value = hex("accent2", "#c9a6ff");
     $("c-briefing").value = ({ "0": "off", off: "off", alt: "alt" })[q.get("briefing")] || "on";
-    $("c-anim").value = q.get("anim") === "fold" ? "fold" : "none";
+    $("c-anim").value = ["fold", "mini"].includes(q.get("anim")) ? q.get("anim") : "none";
     $("c-closed").value = g("closed", 45);
     $("c-rotate").value = g("rotate", 12);
     $("c-brief").value = g("brief", 20);
@@ -1154,7 +1419,9 @@ function startSetup() {
       $("c-demo").checked = q.get("demo") === "1";
       if (q.has("config")) { $("c-usefile").checked = true; $("c-file").value = q.get("config"); }
       const list = (q.get("sources") || "").split(",").map(x => x.trim()).filter(x => SRC_RE.test(x));
-      if (list.length) fillEditor(list);
+      const pl = list.find(x => x.startsWith("planet:"));
+      if (q.get("card") === "planet" || pl) { $("c-card").value = "planet"; setPlanetSpecs(list.filter(x => x.startsWith("planet:")).map(x => x.slice(7))); }
+      else if (list.length) { $("c-card").value = "orders"; fillEditor(list); }
     }
   }
   const lookOnly = q => { const o = new URLSearchParams(); LOOK_KEYS.forEach(k => { if (q.has(k)) o.set(k, q.get(k)); }); return o; };
@@ -1175,10 +1442,10 @@ function startSetup() {
     });
   }
   function describe(q) {
-    const lay = { card: "Karte", bar: "Leiste", counter: "Event-Zähler" }[q.get("layout")] || "Karte";
+    const lay = { card: "Karte", bar: "Leiste", counter: "Event-Zähler", ticker: "Nachrichtenticker" }[q.get("layout")] || "Karte";
     const pos = q.get("pos") || "tl";
     const posTxt = { t: "oben", m: "Mitte", b: "unten" }[pos[0]] + " " + { l: "links", c: "mittig", r: "rechts" }[pos[1]];
-    return `${lay}, ${posTxt}${q.get("anim") === "fold" ? ", klappt ein" : ""}`;
+    return `${lay}, ${posTxt}${q.get("anim") === "fold" ? ", klappt ein" : q.get("anim") === "mini" ? ", eingeklappt" : ""}`;
   }
   $("p-save").onclick = () => {
     const name = $("c-pname").value.trim();
@@ -1197,12 +1464,14 @@ function startSetup() {
     if ($("c-usefile").checked && $("c-repo").value) loadFile();
   };
   $("p-reset").onclick = () => {
-    try { localStorage.removeItem("hd2-last"); } catch (e) {}
-    $("c-mo").checked = true; $("ops").innerHTML = ""; addOp(); $("c-demo").checked = false;
+    try { localStorage.removeItem(lastKey()); } catch (e) {}
+    $("c-demo").checked = false;
     applyParams(new URLSearchParams(), false); // alle Werte auf Standard, auch Abstände
-    applyPreset("classic");
+    if (isPlanet()) { setPlanetSpecs(["auto"]); applyPlanetDefaults(); update(); }
+    else { $("c-mo").checked = true; $("ops").innerHTML = ""; addOp(); applyPreset("classic"); }
   };
 
+  const lastKey = () => isPlanet() ? "hd2-last-planet" : "hd2-last";
   function markPreset(k) {
     document.querySelectorAll("#presets button").forEach(b => b.classList.toggle("on", b.dataset.p === k));
     document.querySelectorAll("#mypresets .mp").forEach(b => b.classList.toggle("on", "my:" + b.dataset.my === k));
@@ -1216,21 +1485,106 @@ function startSetup() {
     $("c-accent2").value = p.accent2 || "#c9a6ff";
     markPreset(k); update();
   }
+  function applyPlanetDefaults() { // Startwerte der Planeten-Karte: kompakt, Mitte rechts, ohne Briefing
+    applyParams(new URLSearchParams("layout=card&pos=mr&briefing=off&bgalpha=80"), false);
+  }
+  document.querySelectorAll("#cardseg button").forEach(b => b.onclick = () => {
+    if ($("c-card").value === b.dataset.card) return;
+    update(); // aktuelle Karte merken
+    $("c-card").value = b.dataset.card;
+    savedList = null;
+    try { localStorage.setItem("hd2-lastcard", b.dataset.card); } catch (e) {}
+    let saved = null;
+    try { saved = localStorage.getItem(lastKey()); } catch (e) {}
+    if (saved) applyParams(new URLSearchParams(saved), true);
+    else if (isPlanet()) { setPlanetSpecs(["auto"]); applyPlanetDefaults(); }
+    else applyPreset("classic");
+    $("c-card").value = b.dataset.card; // applyParams könnte sie bei alten Daten umstellen
+    markPreset(null); update();
+    if ($("c-usefile").checked && $("c-repo").value) loadFile();
+  });
+  $("add-planet").onclick = () => { addPlanetRow("auto"); update(true); };
+  // Ticker gehört an den Bildrand: bei einer Mitte-Position automatisch nach unten
+  $("c-layout").addEventListener("change", () => {
+    if ($("c-layout").value === "ticker" && $("c-pos").value[0] === "m") { $("c-pos").value = "bc"; update(true); }
+  });
   document.querySelectorAll("#presets button").forEach(b => b.onclick = () => applyPreset(b.dataset.p));
   document.querySelectorAll("#posgrid button").forEach(b => b.onclick = () => { $("c-pos").value = b.dataset.pos; update(true); });
   document.querySelectorAll(".swatches button").forEach(b => b.onclick = () => { $("c-accent").value = b.dataset.c; update(); });
 
   let timer;
-  function update(fromUser) {
-    if (fromUser) markPreset(null);
-    const p = new URLSearchParams();
+  const isPlanet = () => $("c-card").value === "planet";
+  // Planeten-Zeilen: Modus (auto | top3 | mo | fix) + bei „fix" der Planet
+  let planetList = [];
+  const PMODES = [["auto", "Automatisch: meiste Helldiver"], ["top3", "Top 3 nach Helldivern"], ["mo", "Major-Order-Ziele"], ["fix", "Fester Planet"]];
+  function addPlanetRow(spec) {
+    spec = String(spec || "auto");
+    const row = document.createElement("div");
+    row.className = "prow";
+    row.innerHTML = `<select>${PMODES.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select>
+      <input type="text" list="planet-list" placeholder="Name, z. B. Fori Prime" autocomplete="off"><button class="ghost" type="button" aria-label="Entfernen">✕</button>`;
+    const [sel, inp] = [row.querySelector("select"), row.querySelector("input")];
+    if (PSPEC_RE.test(spec) && !/^\d+$/.test(spec)) sel.value = PMODES.some(m => m[0] === spec) ? spec : "auto";
+    else { sel.value = "fix"; const hit = planetList.find(x => String(x.index) === spec); inp.value = hit ? titleCase(hit.name) : spec; inp.dataset.pending = hit ? "" : spec; }
+    inp.hidden = sel.value !== "fix";
+    sel.onchange = () => { inp.hidden = sel.value !== "fix"; update(true); };
+    inp.onchange = () => update(true);
+    row.querySelector("button").onclick = () => { row.remove(); if (!$("planets").children.length) addPlanetRow("auto"); update(true); };
+    $("planets").appendChild(row);
+  }
+  function rowSpec(row) {
+    const sel = row.querySelector("select").value;
+    if (sel !== "fix") return sel;
+    const v = row.querySelector("input").value.trim();
+    if (/^\d+$/.test(v)) return v;
+    const hit = planetList.find(x => x.name.toLowerCase() === v.toLowerCase());
+    return hit ? String(hit.index) : null;
+  }
+  function planetSpecs() { return [...new Set([...document.querySelectorAll("#planets .prow")].map(rowSpec).filter(Boolean))]; }
+  function setPlanetSpecs(list) {
+    $("planets").innerHTML = "";
+    (list && list.length ? list : ["auto"]).forEach(addPlanetRow);
+  }
+  const titleCase = n => String(n).toLowerCase().replace(/(^|[\s-])\S/g, c => c.toUpperCase())
+    .replace(/\b([ivx]+)\b/gi, w => /^(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii)$/i.test(w) ? w.toUpperCase() : w);
+  async function loadPlanetList() {
+    try {
+      const list = await hdApi("/api/v1/planets");
+      planetList = list.map(x => ({ index: x.index, name: x.name, players: (x.statistics && x.statistics.playerCount) || 0 }))
+        .sort((a, b) => b.players - a.players || a.name.localeCompare(b.name));
+      $("planet-list").innerHTML = planetList.map(x => `<option value="${esc(titleCase(x.name))}">${x.players ? fmt(x.players) + " Helldiver" : ""}</option>`).join("");
+      document.querySelectorAll("#planets .prow input").forEach(inp => {
+        const hit = inp.dataset.pending && planetList.find(x => String(x.index) === inp.dataset.pending);
+        if (hit) { inp.value = titleCase(hit.name); inp.dataset.pending = ""; }
+      });
+      $("planet-status").textContent = "";
+    } catch (e) { $("planet-status").textContent = "Planetenliste nicht erreichbar – du kannst auch die Planeten-Nummer eintragen."; }
+  }
+  function currentSources() {
+    if (isPlanet()) return (planetSpecs().length ? planetSpecs() : ["auto"]).map(x => "planet:" + x);
     const src = [];
     if ($("c-mo").checked) src.push("mo");
     document.querySelectorAll(".oprow").forEach(r => {
       const [code, clan] = [...r.querySelectorAll("input")].map(i => i.value.trim());
       if (/^[a-z]\d+$/i.test(code)) src.push("op:" + code.toUpperCase() + (/^\d+$/.test(clan) ? ":" + clan : ""));
     });
-    p.set("sources", src.join(",") || "mo"); // Vorschau zeigt immer die Liste im Editor
+    return src;
+  }
+  function showCard() {
+    const pl = isPlanet();
+    $("src-orders").hidden = pl; $("src-planet").hidden = !pl;
+    document.querySelectorAll("#cardseg button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.card === $("c-card").value)));
+    $("usefile-label").textContent = pl ? "Planet in Datei speichern (für dich und den Streamer bearbeitbar)" : "Orders in Datei speichern (für dich und den Streamer bearbeitbar)";
+    $("card-hint").textContent = pl ? "Eigene Karte mit eigenem Link: in OBS als zweite Browserquelle (1920 × 1080) hinzufügen." : "";
+  }
+
+  function update(fromUser) {
+    if (fromUser) markPreset(null);
+    showCard();
+    const p = new URLSearchParams();
+    const src = currentSources();
+    p.set("sources", src.join(",") || "mo"); // Vorschau zeigt immer die Auswahl im Editor
+    if (isPlanet()) p.set("card", "planet");
     if ($("c-demo").checked) p.set("demo", "1");
     p.set("layout", $("c-layout").value);
     p.set("pos", $("c-pos").value);
@@ -1244,6 +1598,7 @@ function startSetup() {
     if (acc2 !== "c9a6ff") p.set("accent2", acc2);
     if ($("c-briefing").value !== "on") p.set("briefing", $("c-briefing").value);
     if ($("c-anim").value === "fold") { p.set("anim", "fold"); p.set("closed", $("c-closed").value); }
+    else if ($("c-anim").value === "mini") p.set("anim", "mini");
     if (+$("c-rotate").value !== 12) p.set("rotate", $("c-rotate").value);
     if ($("c-briefing").value === "alt" && +$("c-brief").value !== 20) p.set("brief", $("c-brief").value);
     if ($("c-briefing").value === "alt" && +$("c-briefh").value !== 220) p.set("briefh", $("c-briefh").value);
@@ -1264,7 +1619,7 @@ function startSetup() {
     const obs = new URLSearchParams(p);
     if ($("c-usefile").checked) { obs.delete("sources"); obs.set("config", $("c-file").value.trim() || "orders.json"); }
     $("out").value = base + "?" + obs.toString();
-    try { localStorage.setItem("hd2-last", obs.toString() + ($("c-usefile").checked ? "&sources=" + encodeURIComponent(src.join(",")) : "")); } catch (e) {}
+    try { localStorage.setItem(lastKey(), obs.toString() + ($("c-usefile").checked ? "&sources=" + encodeURIComponent(src.join(",")) : "")); } catch (e) {}
     $("filebox").hidden = !$("c-usefile").checked;
     $("file-hint").hidden = !($("c-usefile").checked && location.protocol === "file:");
     $("file-hint").textContent = "Hinweis: Du hast den Konfigurator lokal geöffnet. Damit der Link beim Streamer funktioniert, öffne ihn über eure GitHub-Pages-Adresse und kopiere den Link dort.";
@@ -1312,15 +1667,7 @@ function startSetup() {
     const j = await r.json();
     return { sha: j.sha, data: JSON.parse(b64dec(j.content || "")) };
   }
-  function listFromEditor() {
-    const src = [];
-    if ($("c-mo").checked) src.push("mo");
-    document.querySelectorAll(".oprow").forEach(r => {
-      const [code, clan] = [...r.querySelectorAll("input")].map(i => i.value.trim());
-      if (/^[a-z]\d+$/i.test(code)) src.push("op:" + code.toUpperCase() + (/^\d+$/.test(clan) ? ":" + clan : ""));
-    });
-    return src;
-  }
+  const listFromEditor = () => currentSources();
   function fillEditor(list) {
     $("c-mo").checked = list.includes("mo");
     $("ops").innerHTML = "";
@@ -1341,7 +1688,14 @@ function startSetup() {
     fstatus("Lade …");
     try {
       const { data } = await ghGet();
-      const list = data && Array.isArray(data.sources) ? data.sources.filter(x => SRC_RE.test(String(x))) : null;
+      if (isPlanet()) {
+        const specs = data ? (Array.isArray(data.planets) ? data.planets : data.planet != null ? [data.planet] : []).map(String).filter(x => PSPEC_RE.test(x)) : [];
+        if (!specs.length) { fstatus("In der Datei ist noch kein Planet eingetragen – wählen und speichern.", "warn"); savedList = []; return; }
+        setPlanetSpecs(specs); savedList = specs.map(x => "planet:" + x); update();
+        fstatus(`Geladen: ${specs.length} Planeten-Eintrag/Einträge.`, "ok");
+        return;
+      }
+      const list = data && Array.isArray(data.sources) ? data.sources.filter(x => SRC_RE.test(String(x)) && !String(x).startsWith("planet:")) : null;
       if (!list) { fstatus("Datei gibt es noch nicht – trage Orders ein und speichere.", "warn"); savedList = []; return; }
       savedList = list;
       fillEditor(list);
@@ -1355,16 +1709,20 @@ function startSetup() {
     const list = listFromEditor();
     if (!list.length) { fstatus("Bitte mindestens eine Quelle auswählen.", "bad"); return; }
     fstatus("Speichere …");
-    const content = b64enc(JSON.stringify({ sources: list }, null, 2) + "\n");
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
-        const { sha } = await ghGet();
-        const body = { message: "Orders aktualisiert: " + list.join(", "), content };
+        const { sha, data } = await ghGet();
+        // Orders und Planet liegen in derselben Datei: nur den eigenen Teil ersetzen, den anderen behalten
+        const next = Object.assign({}, data && typeof data === "object" ? data : {});
+        if (isPlanet()) { next.planets = list.map(x => x.slice(7)); delete next.planet; if (!Array.isArray(next.sources)) next.sources = ["mo"]; }
+        else next.sources = list;
+        const content = b64enc(JSON.stringify(next, null, 2) + "\n");
+        const body = { message: (isPlanet() ? "Planet aktualisiert: " : "Orders aktualisiert: ") + list.join(", "), content };
         if (sha) body.sha = sha;
         const r = await fetch(`${GH}/repos/${ghRepo()}/contents/${ghPath()}`, {
           method: "PUT", headers: Object.assign({ "Content-Type": "application/json" }, ghHeaders(true)), body: JSON.stringify(body),
         });
-        if (r.ok) { savedList = list; fstatus("Gespeichert ✔ – das Overlay beim Streamer übernimmt die Orders in 1–2 Minuten.", "ok"); return; }
+        if (r.ok) { savedList = list; fstatus(`Gespeichert ✔ – das Overlay beim Streamer übernimmt ${isPlanet() ? "den Planeten" : "die Orders"} in 1–2 Minuten.`, "ok"); return; }
         if ((r.status === 409 || r.status === 422) && attempt === 0) continue; // jemand hat parallel gespeichert: neu versuchen
         throw new Error(ghError(r));
       }
@@ -1378,9 +1736,14 @@ function startSetup() {
   try { const c = localStorage.getItem("hd2-contact"); if (c) $("c-contact").value = c; } catch (e) {}
   $("c-contact").addEventListener("change", () => { try { localStorage.setItem("hd2-contact", $("c-contact").value.trim()); } catch (e) {} });
   let lastSaved = null;
-  try { lastSaved = localStorage.getItem("hd2-last"); } catch (e) {}
+  try { if (localStorage.getItem("hd2-lastcard") === "planet") $("c-card").value = "planet"; lastSaved = localStorage.getItem(lastKey()); } catch (e) {}
+  setPlanetSpecs(["auto"]);
+  loadPlanetList();
+  window.addEventListener("beforeunload", () => { try { localStorage.setItem("hd2-lastcard", $("c-card").value); } catch (e) {} });
   addOp();
-  if (lastSaved) { applyParams(new URLSearchParams(lastSaved), true); update(); } else applyPreset("classic");
+  if (lastSaved) { applyParams(new URLSearchParams(lastSaved), true); update(); }
+  else if (isPlanet()) { applyPlanetDefaults(); update(); }
+  else applyPreset("classic");
   renderMy();
   fitPreview();
   let fileCfg = {};
