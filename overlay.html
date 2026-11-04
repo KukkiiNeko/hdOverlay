@@ -59,6 +59,13 @@
   .rail.h-t.al-c .ritem-row, .rail.h-b.al-c .ritem-row { justify-content: center; }
   .ritem-val { font: 700 30px/1.05 "Chakra Petch", sans-serif; color: var(--accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .ritem-time { font: 700 14px/1.2 "Chakra Petch", sans-serif; color: #d6dbe0; white-space: nowrap; }
+  .ritem.quiet .ritem-title { color: #c4cad0; font-size: 14px; }
+  .ritem.quiet .ritem-val { font: 700 16px/1.2 "Chakra Petch", sans-serif; color: var(--ok); opacity: .9; }
+  .mrow.quiet .mini-title { opacity: .8; }
+  .mrow.quiet .mini-value { font-size: 20px !important; color: var(--ok) !important; text-shadow: none !important; }
+  .tk-quiet { color: #b9c0c7; font-size: 16px; }
+  .tk-quiet b { color: var(--ok); font-size: 17px; }
+  .c-hero.quiet { font-size: 40px; color: var(--ok); text-shadow: none; }
   .ritem-label { font-size: 12.5px; font-weight: 600; color: #d6dbe0; letter-spacing: .06em; text-transform: uppercase; margin-top: 1px; }
 
   .head { display: flex; align-items: center; gap: 12px; padding: 9px 12px 9px 16px;
@@ -403,7 +410,7 @@ const I18N = {
     liberated: "befreit", ended: "Beendet", signed: "Helldiver", clans: "Clans", reports: "Reports",
     players: "Spieler online", noOrders: "Aktuell keine aktive Major Order", loading: "Lade Daten …",
     stale: "Daten veraltet", noConn: "Keine Verbindung", pending: "Startet bald", orders: "Aktive Orders", planet: "Planet", pLib: "Befreiung", pDefense: "Verteidigung", pHeld: "Gesichert",
-    pPlayers: "Helldiver hier", pRate: "Tempo", pRateWait: "Tempo wird ermittelt", pEta: "bis befreit", pEtaDef: "bis verteidigt", pTooSlow: "zu langsam",
+    pPlayers: "Helldiver hier", pHeldOrder: "Gehalten · Order-Ziel", pHeldShort: "✔ gehalten", pRate: "Tempo", pRateWait: "Tempo wird ermittelt", pEta: "bis befreit", pEtaDef: "bis verteidigt", pTooSlow: "zu langsam",
     pRegen: "Regeneration", pSuccess: "Erfolgsquote", noPlanet: "Kein aktiver Planet gefunden", sop: "Strategic Opportunity", minor: "Minor Order", remaining: "Restzeit", status: "Status", running: "Läuft", notTop: "Euer Clan nicht in den Top 5", briefing: "BRIEFING", d: "T", h: "Std", m: "Min",
   },
   en: {
@@ -414,7 +421,7 @@ const I18N = {
     liberated: "liberated", ended: "Ended", signed: "Helldivers", clans: "Clans", reports: "Reports",
     players: "players online", noOrders: "No active Major Order right now", loading: "Loading …",
     stale: "Data stale", noConn: "No connection", pending: "Starting soon", orders: "Active orders", planet: "Planet", pLib: "Liberation", pDefense: "Defense", pHeld: "Secured",
-    pPlayers: "Helldivers here", pRate: "Rate", pRateWait: "Measuring rate", pEta: "to liberation", pEtaDef: "to defended", pTooSlow: "too slow",
+    pPlayers: "Helldivers here", pHeldOrder: "Held · order target", pHeldShort: "✔ held", pRate: "Rate", pRateWait: "Measuring rate", pEta: "to liberation", pEtaDef: "to defended", pTooSlow: "too slow",
     pRegen: "Regeneration", pSuccess: "Success rate", noPlanet: "No active planet found", sop: "Strategic Opportunity", minor: "Minor Order", remaining: "Time left", status: "Status", running: "Running", notTop: "Your clan is not in the top 5", briefing: "BRIEFING", d: "d", h: "h", m: "m",
   },
 };
@@ -518,6 +525,7 @@ function assignmentKind(rawTitle) {
   const kinds = [
     [/^major orders?$/i, T.mo], [/^strategic opportunit(y|ies)$/i, T.sop], [/^minor orders?$/i, T.minor],
     [/^elite operations?$/i, "Elite Operation"], [/^strategic imperatives?$/i, "Strategic Imperative"],
+    [/^strategic threats?$/i, "Strategic Threat"],
   ];
   for (const [re, label] of kinds) if (re.test(t)) return { badge: label, title: null };
   if (/opportunit/i.test(t)) return { badge: T.sop, title: t };
@@ -597,15 +605,20 @@ async function loadPlanet(spec) {
   const players = x => (x.statistics && x.statistics.playerCount) || 0;
   const byPlayers = arr => arr.slice().sort((a, b) => players(b) - players(a));
   if (spec === "mo") {
-    let idx = [];
+    // Ziele aller Aufträge: offene Aufgaben – und Halten-Aufgaben (Typ 13) auch, wenn der Planet
+    // gerade gehalten wird. Die erscheinen dezent und ganz hinten.
+    const idx = new Set(), hold = new Set();
     try {
       (await hdApi("/api/v1/assignments")).forEach(a => (a.tasks || []).forEach((t, i) => {
         const k = (t.valueTypes || []).indexOf(12);
-        if (k >= 0 && t.values[k] && !(Number((a.progress || [])[i]) >= 1)) idx.push(t.values[k]);
+        if (k < 0 || !t.values[k]) return;
+        if (t.type === 13) { idx.add(t.values[k]); hold.add(t.values[k]); }
+        else if (!(Number((a.progress || [])[i]) >= 1)) idx.add(t.values[k]);
       }));
     } catch (e) {}
-    const mo = byPlayers(list.filter(x => idx.includes(x.index)));
-    if (mo.length) return mo.slice(0, 6).map(x => planetToOrder(x));
+    const os = list.filter(x => idx.has(x.index)).map(x => planetToOrder(x, null, hold.has(x.index)));
+    const active = os.filter(o => !o.quiet).sort((a, b) => b.players - a.players), quiet = os.filter(o => o.quiet);
+    if (os.length) return active.concat(quiet).slice(0, 8);
     spec = "auto"; // keine offenen MO-Ziele: wie „automatisch"
   }
   const active = byPlayers(list.filter(x => players(x) > 0));
@@ -635,7 +648,7 @@ function hoursTxt(hrs) {
   const d = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60);
   return d ? `~${d}${T.d} ${hh}${T.h}` : `~${hh}${T.h} ${m % 60}${T.m}`;
 }
-function planetToOrder(p, demoRate) {
+function planetToOrder(p, demoRate, holdTarget) {
   const ev = p.event && p.event.maxHealth ? p.event : null;
   const mode = ev ? "def" : p.currentOwner === "Humans" ? "held" : "lib";
   const pct = mode === "def" ? clamp((1 - ev.health / ev.maxHealth) * 100, 0, 100)
@@ -655,14 +668,18 @@ function planetToOrder(p, demoRate) {
   }
   if (mode === "lib" && p.regenPerSecond && p.maxHealth) foot.push([`−${PCT.format(p.regenPerSecond * 3600 / p.maxHealth * 100)} %/h`, T.pRegen]);
   if (st.missionSuccessRate != null) foot.push([`${st.missionSuccessRate} %`, T.pSuccess]);
+  // Halten-Ziel einer Order, das Super Earth gerade hält: nur dezent zeigen
+  const quiet = !!holdTarget && mode === "held";
   return {
     kind: "planet",
     pidx: p.index,
+    quiet,
+    players: st.playerCount || 0,
     badge: `${T.planet} · ${FACTIONS[enemy] || enemy || ""}${p.sector ? " · " + p.sector : ""}`,
     title: p.name,
     subtitle: "",
     endsAt: ev && ev.endTime ? new Date(ev.endTime) : null,
-    rows: [{ label: mode === "def" ? T.pDefense : mode === "held" ? T.pHeld : T.pLib, value: pctFmt(pct), pct, done: mode === "held" }],
+    rows: [{ label: mode === "def" ? T.pDefense : quiet ? T.pHeldOrder : mode === "held" ? T.pHeld : T.pLib, value: pctFmt(pct), pct, done: mode === "held" }],
     foot,
   };
 }
@@ -682,6 +699,8 @@ function demoData(src) {
         regenPerSecond: 9.7, statistics: { playerCount: 1058, missionSuccessRate: 93 } }, -0.6),
     ];
     const spec = src.slice(7), top = /^top(\d)$/.exec(spec);
+    if (spec === "mo") return demoP.slice(0, 2).concat([planetToOrder({ index: 5, name: "Vernmark", sector: "Ursa", currentOwner: "Humans",
+      maxHealth: 1000000, health: 1000000, statistics: { playerCount: 40, missionSuccessRate: 95 } }, null, true)]);
     return spec === "mo" ? demoP.slice(0, 2) : top ? demoP.slice(0, Number(top[1])) : /^\d+$/.test(spec) ? [demoP.find(x => x.pidx === Number(spec)) || demoP[2]] : [demoP[0]];
   }
   if (src === "mo") return [{
@@ -864,7 +883,7 @@ function counterHTML(o, kb, err) {
   (o.foot || []).forEach(([v, l], i) => { if (l) stats.push({ v: String(v).replace(/<[^>]*>/g, ""), l, k: `${kb}|f${i}` }); });
   const time = o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : T.running);
   return `<div class="c-badge">${esc(o.badge)}</div>
-    <div class="c-hero" data-vk="${kb}|hero">${esc(h.value)}</div>
+    <div class="c-hero${h.quiet ? " quiet" : ""}" data-vk="${kb}|hero">${esc(h.value)}</div>
     <div class="c-hero-label">${esc(h.label)}</div>
     ${h.pct != null ? `<div class="bar"><div class="fill" data-k="${kb}|r${h.i}" data-pct="${h.pct.toFixed(2)}"></div></div>` : ""}
     ${o.title ? `<div class="c-title">${esc(o.title)}</div>` : ""}
@@ -876,6 +895,7 @@ function counterHTML(o, kb, err) {
 
 // Kennzahl für die eingeklappte Ansicht: erste offene Aufgabe mit Fortschritt
 function headline(o) {
+  if (o.quiet) return { value: T.pHeldShort, label: "", pct: null, i: 0, quiet: true };
   const rows = o.rows || [];
   const r = rows.find(r => r.pct != null && !r.done) || rows.find(r => r.pct != null) || rows[0];
   if (!r) return { value: "—", label: "", pct: null, i: -1 };
@@ -886,7 +906,7 @@ function miniAllHTML(all, multi) {
   return all.map(sl => {
     const o = sl.o, kb = `${sl.src}|${sl.idx}`, h = headline(o);
     const time = multi ? (o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : "")) : "";
-    return `<div class="mrow">
+    return `<div class="mrow${o.quiet ? " quiet" : ""}">
       <div class="mrow-top"><span class="mini-title">${esc(nameOf(o))}</span>${time ? `<span class="mrow-time" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</span>` : ""}</div>
       <div class="mini-row"><span class="mini-value" data-vk="${kb}|mini">${esc(h.value)}</span><span class="mini-label">${esc(h.label)}</span></div>
       ${h.pct != null ? `<div class="bar"><div class="fill" data-k="${kb}|r${h.i}" data-pct="${h.pct.toFixed(2)}"></div></div>` : ""}
@@ -946,7 +966,7 @@ function railHTML(all) {
     const o = sl.o, kb = `${sl.src}|${sl.idx}`, h = headline(o);
     const time = o.status || (o.endsAt ? countdown(o.endsAt, o.endsApprox) : "");
     const isPct = /%$/.test(String(h.value).trim());
-    return `<div class="ritem">
+    return `<div class="ritem${o.quiet ? " quiet" : ""}">
       <div class="ritem-title">${esc(nameOf(o))}</div>
       <div class="ritem-row"><span class="ritem-val" data-vk="${kb}|mini">${esc(h.value)}</span>${time ? `<span class="ritem-time mrow-time" data-ends="${o.status || !o.endsAt ? "" : +o.endsAt}">${esc(time)}</span>` : ""}</div>
       ${!isPct && h.label ? `<div class="ritem-label">${esc(h.label)}</div>` : ""}
@@ -1130,6 +1150,7 @@ function tickerContentHTML() {
   const sep = '<span class="tk-sep">◆</span>';
   return all.map(sl => {
     const o = sl.o, kb = `${sl.src}|${sl.idx}`, parts = [];
+    if (o.quiet) return `<span class="tk-order"><span class="tk-title" style="opacity:.75">${esc(nameOf(o))}</span><span class="tk-stat tk-quiet">${esc(T.pHeldOrder)}<b>✔</b></span></span>`;
     (o.rows || []).forEach((r, i) => {
       const extra = r.pct != null && String(r.value).includes("/") ? ` (${pctFmt(r.pct)})` : "";
       parts.push(`<span class="tk-stat${r.done ? " done" : ""}">${esc(r.label)}<b data-vk="${kb}|t${i}">${esc(r.value + extra)}</b></span>`);
