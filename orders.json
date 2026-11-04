@@ -2,5 +2,8 @@
   "sources": [
     "mo",
     "op:C2382"
+  ],
+  "planets": [
+    "mo"
   ]
 }
